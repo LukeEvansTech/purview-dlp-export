@@ -95,3 +95,28 @@ Describe 'ConvertTo-NormalisedBaseline sort order' {
         }
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline orphan handling' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+        $script:orphanRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block Orphan SIT Reference' }
+    }
+
+    It 'finds the orphan rule in the normalised output' {
+        $script:orphanRule | Should -Not -BeNullOrEmpty
+    }
+
+    It 'marks the orphan SIT reference with Orphan = true' {
+        $sitRef = $script:orphanRule.ContentContainsSensitiveInformation[0]
+        $sitRef.PSObject.Properties.Name | Should -Contain 'Orphan'
+        $sitRef.Orphan | Should -BeTrue
+    }
+
+    It 'leaves non-orphan SIT references with Orphan = false' {
+        $awsRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block AWS Access Keys' }
+        $sitRef = $awsRule.ContentContainsSensitiveInformation[0]
+        $sitRef.Orphan | Should -BeFalse
+    }
+}

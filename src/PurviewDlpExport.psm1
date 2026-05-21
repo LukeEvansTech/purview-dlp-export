@@ -28,6 +28,51 @@ function Remove-VolatileFields {
     [PSCustomObject]$copy
 }
 
+function Add-OrphanAnnotation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Rule,
+        [Parameter(Mandatory)]
+        [string[]] $KnownSitIds,
+        [Parameter(Mandatory)]
+        [string[]] $KnownLabelIds
+    )
+
+    $copy = [ordered]@{}
+    foreach ($name in ($Rule.PSObject.Properties.Name | Sort-Object)) {
+        $value = $Rule.PSObject.Properties[$name].Value
+
+        if ($name -eq 'ContentContainsSensitiveInformation' -and $null -ne $value) {
+            $value = @($value | ForEach-Object {
+                $ref = [ordered]@{}
+                foreach ($p in ($_.PSObject.Properties.Name | Sort-Object)) {
+                    $ref[$p] = $_.PSObject.Properties[$p].Value
+                }
+                $ref['Orphan'] = ($KnownSitIds -notcontains $_.id)
+                [PSCustomObject]$ref
+            })
+        }
+        elseif ($name -eq 'HasSensitiveInformation' -and $null -ne $value) {
+            $value = @($value | ForEach-Object {
+                $ref = [ordered]@{}
+                foreach ($p in ($_.PSObject.Properties.Name | Sort-Object)) {
+                    $ref[$p] = $_.PSObject.Properties[$p].Value
+                }
+                if ($_.type -eq 'label') {
+                    $ref['Orphan'] = ($KnownLabelIds -notcontains $_.id)
+                } else {
+                    $ref['Orphan'] = ($KnownSitIds -notcontains $_.id)
+                }
+                [PSCustomObject]$ref
+            })
+        }
+
+        $copy[$name] = $value
+    }
+    [PSCustomObject]$copy
+}
+
 function ConvertTo-NormalisedBaseline {
     [CmdletBinding()]
     param(
@@ -35,15 +80,21 @@ function ConvertTo-NormalisedBaseline {
         $Inventory
     )
 
+    $knownSitIds   = @($Inventory.ReferencedSits   | ForEach-Object { $_.Id })
+    $knownLabelIds = @($Inventory.ReferencedLabels | ForEach-Object { $_.Id })
+
     $strippedPolicies = @($Inventory.Policies | ForEach-Object {
         Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
     } | Sort-Object Name)
 
     $strippedRules = @($Inventory.Rules | ForEach-Object {
-        Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+        $stripped = Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+        Add-OrphanAnnotation -Rule $stripped `
+            -KnownSitIds $knownSitIds `
+            -KnownLabelIds $knownLabelIds
     } | Sort-Object ParentPolicyName, Name)
 
-    $sortedSits = @($Inventory.ReferencedSits | Sort-Object Name)
+    $sortedSits   = @($Inventory.ReferencedSits   | Sort-Object Name)
     $sortedLabels = @($Inventory.ReferencedLabels | Sort-Object Name)
 
     $normalised = [PSCustomObject]@{
