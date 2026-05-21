@@ -9,6 +9,85 @@ $script:VolatileFields = @(
     'ImmutableId'
 )
 
+function Connect-PurviewDlpSession {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $UserPrincipalName
+    )
+
+    if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+        throw "ExchangeOnlineManagement module not installed. Run: Install-Module ExchangeOnlineManagement -MinimumVersion 3.0 -Scope CurrentUser"
+    }
+
+    Import-Module ExchangeOnlineManagement -ErrorAction Stop
+
+    Connect-IPPSSession -UserPrincipalName $UserPrincipalName -ErrorAction Stop
+}
+
+function Get-DlpInventory {
+    [CmdletBinding()]
+    param()
+
+    $policies = @(Get-DlpCompliancePolicy -ErrorAction Stop)
+    $rules    = @(Get-DlpComplianceRule   -ErrorAction Stop)
+
+    if ($policies.Count -eq 0) {
+        throw "0 policies returned — check your account has Compliance Administrator or DLP Reader role on this tenant."
+    }
+    if ($rules.Count -eq 0) {
+        throw "0 rules returned — policies exist but no rules. Verify account permissions."
+    }
+
+    $sitIds   = New-Object System.Collections.Generic.HashSet[string]
+    $labelIds = New-Object System.Collections.Generic.HashSet[string]
+
+    foreach ($rule in $rules) {
+        if ($rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' `
+            -and $null -ne $rule.ContentContainsSensitiveInformation) {
+            foreach ($s in $rule.ContentContainsSensitiveInformation) {
+                if ($s.id) { [void]$sitIds.Add($s.id) }
+            }
+        }
+        if ($rule.PSObject.Properties.Name -contains 'HasSensitiveInformation' `
+            -and $null -ne $rule.HasSensitiveInformation) {
+            foreach ($ref in $rule.HasSensitiveInformation) {
+                if ($ref.type -eq 'label') {
+                    if ($ref.id) { [void]$labelIds.Add($ref.id) }
+                } else {
+                    if ($ref.id) { [void]$sitIds.Add($ref.id) }
+                }
+            }
+        }
+    }
+
+    $referencedSits = @()
+    foreach ($id in $sitIds) {
+        try {
+            $sit = Get-DlpSensitiveInformationType -Identity $id -ErrorAction Stop
+            $referencedSits += [PSCustomObject]@{ Id = $id; Name = $sit.Name }
+        } catch {
+            $referencedSits += [PSCustomObject]@{ Id = $id; Name = $null }
+        }
+    }
+
+    $referencedLabels = @()
+    foreach ($id in $labelIds) {
+        try {
+            $label = Get-Label -Identity $id -ErrorAction Stop
+            $referencedLabels += [PSCustomObject]@{ Id = $id; Name = $label.DisplayName }
+        } catch {
+            $referencedLabels += [PSCustomObject]@{ Id = $id; Name = $null }
+        }
+    }
+
+    [PSCustomObject]@{
+        Policies         = $policies
+        Rules            = $rules
+        ReferencedSits   = $referencedSits
+        ReferencedLabels = $referencedLabels
+    }
+}
+
 function Remove-VolatileFields {
     [CmdletBinding()]
     param(
@@ -260,4 +339,9 @@ function Export-DlpBaselineMarkdown {
     [PSCustomObject]@{ MarkdownPath = $mdPath }
 }
 
-Export-ModuleMember -Function ConvertTo-NormalisedBaseline, Export-DlpBaselineJson, Export-DlpBaselineMarkdown
+Export-ModuleMember -Function `
+    Connect-PurviewDlpSession, `
+    Get-DlpInventory, `
+    ConvertTo-NormalisedBaseline, `
+    Export-DlpBaselineJson, `
+    Export-DlpBaselineMarkdown
