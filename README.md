@@ -13,7 +13,6 @@ Captures policies, rules, and the names of any sensitivity labels and Sensitive 
 ## Usage
 
 ```powershell
-Import-Module ./src/PurviewDlpExport.psm1
 ./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@tenant.onmicrosoft.com -Tenant acme -OutDir ./out
 ```
 
@@ -52,7 +51,16 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
 
 4. Authenticate when prompted (interactive MFA flow).
 5. Verify three files were written: `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, and `.md`.
-6. Re-run the same command immediately. Before the second run, copy the first JSON aside (e.g. `cp out-smoke/baseline-YYYYMMDD-<tenant>.json out-smoke/baseline-YYYYMMDD-<tenant>.json.first`). After the second run, compare:
+
+5a. Verify the meta sidecar records the correct tool version:
+
+   ```bash
+   cat out-smoke/baseline-*.meta.json | grep -i ToolVersion
+   ```
+
+   Expected: `"ToolVersion": "0.1.0"` (matching `ModuleVersion` in `src/PurviewDlpExport.psd1`). If it shows `"0.0"`, the entrypoint loaded the module via the `.psm1` directly instead of the manifest — flag as a bug, do not commit the baseline.
+
+7. Re-run the same command immediately. Before the second run, copy the first JSON aside (e.g. `cp out-smoke/baseline-YYYYMMDD-<tenant>.json out-smoke/baseline-YYYYMMDD-<tenant>.json.first`). After the second run, compare:
 
    ```bash
    diff out-smoke/baseline-YYYYMMDD-<tenant>.json.first out-smoke/baseline-YYYYMMDD-<tenant>.json
@@ -60,7 +68,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
 
    Expected: empty diff. If there's a diff, a field that should be stripped isn't — capture the diff and add the field to `$script:VolatileFields` in `src/PurviewDlpExport.psm1`, with a corresponding test in the strip-volatile-fields Describe block to lock it in.
 
-7. Open the `.md` and skim for readability. The DLP Team should be able to read it without referring to the JSON.
+8. Open the `.md` and skim for readability. The DLP Team should be able to read it without referring to the JSON.
 
 If any step fails, do not commit a stale baseline. The output files should never be committed to this repo (see `.gitignore`); they belong with the engagement workspace.
 
