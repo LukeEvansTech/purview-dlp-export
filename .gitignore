@@ -1,0 +1,23 @@
+# PowerShell
+*.user
+*.tmp
+*.bak
+
+# Pester
+TestResults*.xml
+coverage*.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Local baseline outputs (these should NEVER be committed to the tool repo;
+# they belong with the engagement workspace, not the tool)
+baseline-*.json
+baseline-*.meta.json
+baseline-*.md
