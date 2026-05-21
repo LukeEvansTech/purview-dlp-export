@@ -152,4 +152,112 @@ function Export-DlpBaselineJson {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-NormalisedBaseline, Export-DlpBaselineJson
+function Format-RuleConditions {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Rule)
+
+    $parts = @()
+
+    if ($Rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' `
+        -and $null -ne $Rule.ContentContainsSensitiveInformation) {
+        foreach ($sit in $Rule.ContentContainsSensitiveInformation) {
+            $name = if ($sit.name) { $sit.name } else { "<orphan id=$($sit.id)>" }
+            $parts += "SIT *$name*"
+        }
+    }
+
+    if ($Rule.PSObject.Properties.Name -contains 'HasSensitiveInformation' `
+        -and $null -ne $Rule.HasSensitiveInformation) {
+        foreach ($ref in $Rule.HasSensitiveInformation) {
+            $kind = if ($ref.type -eq 'label') { 'label' } else { 'SIT' }
+            $name = if ($ref.name) { $ref.name } else { "<orphan id=$($ref.id)>" }
+            $parts += "$kind *$name*"
+        }
+    }
+
+    if ($Rule.PSObject.Properties.Name -contains 'ContentMatchesKeywords' `
+        -and $null -ne $Rule.ContentMatchesKeywords) {
+        $kw = ($Rule.ContentMatchesKeywords -join ', ')
+        $parts += "keywords: $kw"
+    }
+
+    if ($parts.Count -eq 0) { '(no conditions)' } else { $parts -join ' OR ' }
+}
+
+function Format-RuleActions {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Rule)
+
+    $actions = @()
+    if ($Rule.PSObject.Properties.Name -contains 'BlockAccess' -and $Rule.BlockAccess) {
+        $actions += 'block'
+    }
+    if ($Rule.PSObject.Properties.Name -contains 'NotifyUser' -and $Rule.NotifyUser) {
+        $actions += "notify: $($Rule.NotifyUser -join ', ')"
+    }
+    if ($Rule.PSObject.Properties.Name -contains 'GenerateIncidentReport' -and $Rule.GenerateIncidentReport) {
+        $actions += "incident report: $($Rule.GenerateIncidentReport -join ', ')"
+    }
+    if ($actions.Count -eq 0) { '(no actions)' } else { $actions -join '; ' }
+}
+
+function Export-DlpBaselineMarkdown {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Normalised,
+        [Parameter(Mandatory)] [string] $OutDir,
+        [Parameter(Mandatory)] [string] $Tenant,
+        [Parameter(Mandatory)] [string] $DateStamp
+    )
+
+    if (-not (Test-Path $OutDir)) {
+        throw "OutDir does not exist: $OutDir"
+    }
+
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine("# Purview DLP Baseline — $Tenant")
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine("- Date: $DateStamp")
+    [void]$sb.AppendLine("- Policies: $($Normalised.Policies.Count)")
+    [void]$sb.AppendLine("- Rules: $($Normalised.Rules.Count)")
+    [void]$sb.AppendLine()
+
+    foreach ($policy in $Normalised.Policies) {
+        [void]$sb.AppendLine("## Policy: $($policy.Name)")
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine("- Mode: $($policy.Mode)")
+        [void]$sb.AppendLine("- Enabled: $($policy.Enabled)")
+        [void]$sb.AppendLine("- Workload: $($policy.Workload)")
+        [void]$sb.AppendLine("- Priority: $($policy.Priority)")
+        if ($policy.PSObject.Properties.Name -contains 'Comment' -and $policy.Comment) {
+            [void]$sb.AppendLine("- Comment: $($policy.Comment)")
+        }
+        [void]$sb.AppendLine()
+
+        $childRules = $Normalised.Rules | Where-Object { $_.ParentPolicyName -eq $policy.Name }
+        foreach ($rule in $childRules) {
+            [void]$sb.AppendLine("### Rule: $($rule.Name)")
+            [void]$sb.AppendLine()
+            [void]$sb.AppendLine("- Mode: $($rule.Mode)")
+            [void]$sb.AppendLine("- Priority: $($rule.Priority)")
+            [void]$sb.AppendLine("- Disabled: $($rule.Disabled)")
+            [void]$sb.AppendLine("- Conditions: $(Format-RuleConditions -Rule $rule)")
+            [void]$sb.AppendLine("- Actions: $(Format-RuleActions -Rule $rule)")
+            if ($rule.PSObject.Properties.Name -contains 'ExceptIfRecipientDomainIs' -and $rule.ExceptIfRecipientDomainIs) {
+                [void]$sb.AppendLine("- Except if recipient domain in: $($rule.ExceptIfRecipientDomainIs -join ', ')")
+            }
+            if ($rule.PSObject.Properties.Name -contains 'Comment' -and $rule.Comment) {
+                [void]$sb.AppendLine("- Comment: $($rule.Comment)")
+            }
+            [void]$sb.AppendLine()
+        }
+    }
+
+    $mdPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.md"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($mdPath, $sb.ToString(), $utf8NoBom)
+
+    [PSCustomObject]@{ MarkdownPath = $mdPath }
+}
+
+Export-ModuleMember -Function ConvertTo-NormalisedBaseline, Export-DlpBaselineJson, Export-DlpBaselineMarkdown

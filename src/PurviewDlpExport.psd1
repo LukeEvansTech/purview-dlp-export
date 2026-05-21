@@ -5,5 +5,5 @@
     Author            = 'Luke Evans'
     Description       = 'Read-only Purview DLP ruleset baseline export.'
     PowerShellVersion = '7.0'
-    FunctionsToExport = @('ConvertTo-NormalisedBaseline','Export-DlpBaselineJson')
+    FunctionsToExport = @('ConvertTo-NormalisedBaseline','Export-DlpBaselineJson','Export-DlpBaselineMarkdown')
 }
