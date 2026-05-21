@@ -21,3 +21,41 @@ Describe 'ConvertTo-NormalisedBaseline shape' {
         $result.Normalised.PSObject.Properties.Name | Should -Contain 'ReferencedLabels'
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline strips volatile fields from policies' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+    }
+
+    It 'strips <Field> from every policy' -ForEach @(
+        @{ Field = 'RunspaceId' }
+        @{ Field = 'ETag' }
+        @{ Field = 'WhenCreatedUTC' }
+        @{ Field = 'WhenChangedUTC' }
+        @{ Field = 'ObjectVersion' }
+        @{ Field = 'ImmutableId' }
+    ) {
+        foreach ($policy in $script:result.Normalised.Policies) {
+            $policy.PSObject.Properties.Name | Should -Not -Contain $Field
+        }
+    }
+}
+
+Describe 'ConvertTo-NormalisedBaseline strips volatile fields from rules' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+    }
+
+    It 'strips <Field> from every rule' -ForEach @(
+        @{ Field = 'RunspaceId' }
+        @{ Field = 'ETag' }
+        @{ Field = 'WhenCreatedUTC' }
+        @{ Field = 'WhenChangedUTC' }
+        @{ Field = 'ObjectVersion' }
+        @{ Field = 'ImmutableId' }
+    ) {
+        foreach ($rule in $script:result.Normalised.Rules) {
+            $rule.PSObject.Properties.Name | Should -Not -Contain $Field
+        }
+    }
+}

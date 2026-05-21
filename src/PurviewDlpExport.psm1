@@ -9,6 +9,24 @@ $script:VolatileFields = @(
     'ImmutableId'
 )
 
+function Remove-VolatileFields {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        $Record,
+        [Parameter(Mandatory)]
+        [string[]] $Fields
+    )
+
+    $copy = [ordered]@{}
+    foreach ($prop in $Record.PSObject.Properties) {
+        if ($Fields -notcontains $prop.Name) {
+            $copy[$prop.Name] = $prop.Value
+        }
+    }
+    [PSCustomObject]$copy
+}
+
 function ConvertTo-NormalisedBaseline {
     [CmdletBinding()]
     param(
@@ -16,9 +34,16 @@ function ConvertTo-NormalisedBaseline {
         $Inventory
     )
 
+    $strippedPolicies = @($Inventory.Policies | ForEach-Object {
+        Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+    })
+    $strippedRules = @($Inventory.Rules | ForEach-Object {
+        Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+    })
+
     $normalised = [PSCustomObject]@{
-        Policies         = $Inventory.Policies
-        Rules            = $Inventory.Rules
+        Policies         = $strippedPolicies
+        Rules            = $strippedRules
         ReferencedSits   = $Inventory.ReferencedSits
         ReferencedLabels = $Inventory.ReferencedLabels
     }
