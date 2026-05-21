@@ -120,3 +120,25 @@ Describe 'ConvertTo-NormalisedBaseline orphan handling' {
         $sitRef.Orphan | Should -BeFalse
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline idempotency and byte-stability' {
+    It 'is idempotent: Normalise(Normalise(x)) == Normalise(x)' {
+        $once  = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+        $twice = ConvertTo-NormalisedBaseline -Inventory $once.Normalised
+
+        $jsonOnce  = $once.Normalised  | ConvertTo-Json -Depth 20
+        $jsonTwice = $twice.Normalised | ConvertTo-Json -Depth 20
+
+        $jsonTwice | Should -Be $jsonOnce
+    }
+
+    It 'produces byte-identical JSON on two runs against the same input' {
+        $a = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+        $b = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+
+        $jsonA = $a.Normalised | ConvertTo-Json -Depth 20
+        $jsonB = $b.Normalised | ConvertTo-Json -Depth 20
+
+        $jsonB | Should -Be $jsonA
+    }
+}

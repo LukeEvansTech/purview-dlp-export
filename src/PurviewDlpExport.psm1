@@ -45,25 +45,29 @@ function Add-OrphanAnnotation {
 
         if ($name -eq 'ContentContainsSensitiveInformation' -and $null -ne $value) {
             $value = @($value | ForEach-Object {
-                $ref = [ordered]@{}
+                $raw = [ordered]@{}
                 foreach ($p in ($_.PSObject.Properties.Name | Sort-Object)) {
-                    $ref[$p] = $_.PSObject.Properties[$p].Value
+                    $raw[$p] = $_.PSObject.Properties[$p].Value
                 }
-                $ref['Orphan'] = ($KnownSitIds -notcontains $_.id)
+                $raw['Orphan'] = ($KnownSitIds -notcontains $_.id)
+                $ref = [ordered]@{}
+                foreach ($k in ($raw.Keys | Sort-Object)) { $ref[$k] = $raw[$k] }
                 [PSCustomObject]$ref
             })
         }
         elseif ($name -eq 'HasSensitiveInformation' -and $null -ne $value) {
             $value = @($value | ForEach-Object {
-                $ref = [ordered]@{}
+                $raw = [ordered]@{}
                 foreach ($p in ($_.PSObject.Properties.Name | Sort-Object)) {
-                    $ref[$p] = $_.PSObject.Properties[$p].Value
+                    $raw[$p] = $_.PSObject.Properties[$p].Value
                 }
                 if ($_.type -eq 'label') {
-                    $ref['Orphan'] = ($KnownLabelIds -notcontains $_.id)
+                    $raw['Orphan'] = ($KnownLabelIds -notcontains $_.id)
                 } else {
-                    $ref['Orphan'] = ($KnownSitIds -notcontains $_.id)
+                    $raw['Orphan'] = ($KnownSitIds -notcontains $_.id)
                 }
+                $ref = [ordered]@{}
+                foreach ($k in ($raw.Keys | Sort-Object)) { $ref[$k] = $raw[$k] }
                 [PSCustomObject]$ref
             })
         }
