@@ -59,3 +59,39 @@ Describe 'ConvertTo-NormalisedBaseline strips volatile fields from rules' {
         }
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline sort order' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+    }
+
+    It 'sorts policies by Name ascending' {
+        $names = $script:result.Normalised.Policies | ForEach-Object { $_.Name }
+        $sorted = $names | Sort-Object
+        $names | Should -Be $sorted
+    }
+
+    It 'sorts rules by ParentPolicyName then Name ascending' {
+        $keys = $script:result.Normalised.Rules | ForEach-Object {
+            "$($_.ParentPolicyName)::$($_.Name)"
+        }
+        $sorted = $keys | Sort-Object
+        $keys | Should -Be $sorted
+    }
+
+    It 'sorts property keys alphabetically within each policy' {
+        foreach ($policy in $script:result.Normalised.Policies) {
+            $names = $policy.PSObject.Properties.Name
+            $sorted = $names | Sort-Object
+            $names | Should -Be $sorted
+        }
+    }
+
+    It 'sorts property keys alphabetically within each rule' {
+        foreach ($rule in $script:result.Normalised.Rules) {
+            $names = $rule.PSObject.Properties.Name
+            $sorted = $names | Sort-Object
+            $names | Should -Be $sorted
+        }
+    }
+}

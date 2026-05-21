@@ -19,9 +19,10 @@ function Remove-VolatileFields {
     )
 
     $copy = [ordered]@{}
-    foreach ($prop in $Record.PSObject.Properties) {
-        if ($Fields -notcontains $prop.Name) {
-            $copy[$prop.Name] = $prop.Value
+    $sortedNames = $Record.PSObject.Properties.Name | Sort-Object
+    foreach ($name in $sortedNames) {
+        if ($Fields -notcontains $name) {
+            $copy[$name] = $Record.PSObject.Properties[$name].Value
         }
     }
     [PSCustomObject]$copy
@@ -36,16 +37,20 @@ function ConvertTo-NormalisedBaseline {
 
     $strippedPolicies = @($Inventory.Policies | ForEach-Object {
         Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
-    })
+    } | Sort-Object Name)
+
     $strippedRules = @($Inventory.Rules | ForEach-Object {
         Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
-    })
+    } | Sort-Object ParentPolicyName, Name)
+
+    $sortedSits = @($Inventory.ReferencedSits | Sort-Object Name)
+    $sortedLabels = @($Inventory.ReferencedLabels | Sort-Object Name)
 
     $normalised = [PSCustomObject]@{
         Policies         = $strippedPolicies
         Rules            = $strippedRules
-        ReferencedSits   = $Inventory.ReferencedSits
-        ReferencedLabels = $Inventory.ReferencedLabels
+        ReferencedSits   = $sortedSits
+        ReferencedLabels = $sortedLabels
     }
 
     [PSCustomObject]@{
