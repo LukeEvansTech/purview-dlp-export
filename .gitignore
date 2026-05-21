@@ -21,3 +21,6 @@ Thumbs.db
 baseline-*.json
 baseline-*.meta.json
 baseline-*.md
+
+# Allow the published example (not a real output — it is a test-fixture copy)
+!examples/baseline-sample.md
