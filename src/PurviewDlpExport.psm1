@@ -114,4 +114,42 @@ function ConvertTo-NormalisedBaseline {
     }
 }
 
-Export-ModuleMember -Function ConvertTo-NormalisedBaseline
+function Export-DlpBaselineJson {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Normalised,
+        [Parameter(Mandatory)] [string] $OutDir,
+        [Parameter(Mandatory)] [string] $Tenant,
+        [Parameter(Mandatory)] [string[]] $StrippedFields,
+        [Parameter(Mandatory)] [string] $DateStamp,
+        [Parameter(Mandatory)] [string] $RunnerUpn
+    )
+
+    if (-not (Test-Path $OutDir)) {
+        throw "OutDir does not exist: $OutDir"
+    }
+
+    $jsonPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.json"
+    $metaPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.meta.json"
+
+    $jsonBody = $Normalised | ConvertTo-Json -Depth 20
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($jsonPath, $jsonBody, $utf8NoBom)
+
+    $meta = [PSCustomObject]@{
+        Tenant              = $Tenant
+        RunnerUpn           = $RunnerUpn
+        ExtractTimestampUtc = (Get-Date).ToUniversalTime().ToString('o')
+        StrippedFields      = $StrippedFields
+        ToolVersion         = (Get-Module PurviewDlpExport).Version.ToString()
+    }
+    $metaBody = $meta | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($metaPath, $metaBody, $utf8NoBom)
+
+    [PSCustomObject]@{
+        JsonPath = $jsonPath
+        MetaPath = $metaPath
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-NormalisedBaseline, Export-DlpBaselineJson

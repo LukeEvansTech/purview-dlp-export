@@ -1,5 +1,5 @@
 BeforeAll {
-    $modulePath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpExport.psm1'
+    $modulePath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpExport.psd1'
     Import-Module $modulePath -Force
 
     $fixturePath = Join-Path $PSScriptRoot 'fixtures' 'raw-purview-sample.json'
