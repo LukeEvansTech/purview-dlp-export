@@ -7,7 +7,7 @@ Captures policies, rules, and the names of any sensitivity labels and Sensitive 
 ## Requirements
 
 - PowerShell 7.x
-- `ExchangeOnlineManagement` ≥ 3.x: `Install-Module ExchangeOnlineManagement -MinimumVersion 3.0`
+- `ExchangeOnlineManagement` ≥ 3.x: `Install-Module ExchangeOnlineManagement -MinimumVersion 3.0 -Scope CurrentUser`
 - An account with Compliance Administrator or DLP Reader role on the tenant
 
 ## Usage
