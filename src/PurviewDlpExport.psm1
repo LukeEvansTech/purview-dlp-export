@@ -113,8 +113,10 @@ function Add-OrphanAnnotation {
         [Parameter(Mandatory)]
         $Rule,
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]] $KnownSitIds,
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]] $KnownLabelIds
     )
 

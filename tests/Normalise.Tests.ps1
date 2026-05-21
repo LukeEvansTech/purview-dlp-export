@@ -222,3 +222,35 @@ Describe 'ConvertTo-NormalisedBaseline StrippedFields manifest' {
         }
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline handles empty reference collections' {
+    It 'does not throw when ReferencedLabels is empty' {
+        $inv = [PSCustomObject]@{
+            Policies         = $script:rawInventory.Policies
+            Rules            = $script:rawInventory.Rules
+            ReferencedSits   = $script:rawInventory.ReferencedSits
+            ReferencedLabels = @()
+        }
+        { ConvertTo-NormalisedBaseline -Inventory $inv } | Should -Not -Throw
+    }
+
+    It 'does not throw when ReferencedSits is empty' {
+        $inv = [PSCustomObject]@{
+            Policies         = $script:rawInventory.Policies
+            Rules            = $script:rawInventory.Rules
+            ReferencedSits   = @()
+            ReferencedLabels = $script:rawInventory.ReferencedLabels
+        }
+        { ConvertTo-NormalisedBaseline -Inventory $inv } | Should -Not -Throw
+    }
+
+    It 'does not throw when both ReferencedSits and ReferencedLabels are empty' {
+        $inv = [PSCustomObject]@{
+            Policies         = $script:rawInventory.Policies
+            Rules            = $script:rawInventory.Rules
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+        { ConvertTo-NormalisedBaseline -Inventory $inv } | Should -Not -Throw
+    }
+}
