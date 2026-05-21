@@ -142,3 +142,83 @@ Describe 'ConvertTo-NormalisedBaseline idempotency and byte-stability' {
         $jsonB | Should -Be $jsonA
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline preserves semantic fields' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+        $script:awsRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block AWS Access Keys' }
+        $script:labelRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block Highly Confidential External' }
+        $script:keywordRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block Credit Card Number Phrases' }
+        $script:legacyPolicy = $script:result.Normalised.Policies |
+            Where-Object { $_.Name -eq 'Legacy Keyword Blocks' }
+    }
+
+    It 'preserves rule Name, Mode, Priority on a SIT rule' {
+        $script:awsRule.Name     | Should -Be 'Block AWS Access Keys'
+        $script:awsRule.Mode     | Should -Be 'Enable'
+        $script:awsRule.Priority | Should -Be 0
+    }
+
+    It 'preserves Disabled flag on rules' {
+        $script:awsRule.Disabled    | Should -BeFalse
+        $script:keywordRule.Disabled | Should -BeTrue
+    }
+
+    It 'preserves BlockAccess and NotifyUser actions' {
+        $script:awsRule.BlockAccess | Should -BeTrue
+        $script:awsRule.NotifyUser  | Should -Be @('LastModifier', 'Owner')
+    }
+
+    It 'preserves Comment field' {
+        $script:awsRule.Comment | Should -Be 'Tier-1.'
+    }
+
+    It 'preserves exception clauses' {
+        $script:labelRule.ExceptIfRecipientDomainIs | Should -Be @('example.com')
+    }
+
+    It 'preserves GenerateIncidentReport on the keyword rule' {
+        $script:keywordRule.GenerateIncidentReport | Should -Be @('Owner')
+    }
+
+    It 'preserves policy-level Enabled flag (including false)' {
+        $script:legacyPolicy.Enabled | Should -BeFalse
+    }
+}
+
+Describe 'ConvertTo-NormalisedBaseline StrippedFields manifest' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+    }
+
+    It 'lists every field that was actually removed from policies' {
+        $rawPolicyFields = $script:rawInventory.Policies[0].PSObject.Properties.Name
+        $normPolicyFields = $script:result.Normalised.Policies[0].PSObject.Properties.Name
+        $actuallyRemoved = $rawPolicyFields | Where-Object { $_ -notin $normPolicyFields }
+
+        # Every field the function CLAIMS to strip must actually be absent from output:
+        foreach ($field in $script:result.StrippedFields) {
+            $normPolicyFields | Should -Not -Contain $field
+        }
+        # And every field that was actually removed must be listed in StrippedFields:
+        foreach ($field in $actuallyRemoved) {
+            $script:result.StrippedFields | Should -Contain $field
+        }
+    }
+
+    It 'lists every field that was actually removed from rules' {
+        $rawRuleFields = $script:rawInventory.Rules[0].PSObject.Properties.Name
+        $normRuleFields = $script:result.Normalised.Rules[0].PSObject.Properties.Name
+        $actuallyRemoved = $rawRuleFields | Where-Object { $_ -notin $normRuleFields }
+
+        foreach ($field in $script:result.StrippedFields) {
+            $normRuleFields | Should -Not -Contain $field
+        }
+        foreach ($field in $actuallyRemoved) {
+            $script:result.StrippedFields | Should -Contain $field
+        }
+    }
+}
