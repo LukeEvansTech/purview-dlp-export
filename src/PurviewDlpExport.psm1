@@ -26,6 +26,44 @@ function Compress-EnumCollisions {
     $json | ConvertFrom-Json
 }
 
+function Sort-NormalisedKeys {
+    # Deep alphabetical sort of all object keys in a normalised inventory. Without this, nested
+    # Purview objects (inside EndpointDlpExtendedLocations etc.) keep whatever key order the cmdlet
+    # produces, which varies between calls and breaks byte-stability. Uses an iterative DFS with
+    # an explicit stack — recursion would overflow on deep Purview structures.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Normalised)
+
+    $json = $Normalised | ConvertTo-Json -Depth 20
+    $root = $json | ConvertFrom-Json -AsHashtable
+
+    $stack = New-Object System.Collections.Stack
+    $stack.Push($root)
+    while ($stack.Count -gt 0) {
+        $node = $stack.Pop()
+        if ($node -is [System.Collections.IDictionary]) {
+            $keys = @($node.Keys) | Sort-Object
+            $tmp = [ordered]@{}
+            foreach ($k in $keys) { $tmp[$k] = $node[$k] }
+            $node.Clear()
+            foreach ($k in $keys) {
+                $node[$k] = $tmp[$k]
+                $v = $tmp[$k]
+                if ($v -is [System.Collections.IDictionary]) {
+                    $stack.Push($v)
+                } elseif ($v -is [System.Collections.IEnumerable] -and $v -isnot [string]) {
+                    foreach ($item in $v) { $stack.Push($item) }
+                }
+            }
+        }
+        elseif ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
+            foreach ($item in $node) { $stack.Push($item) }
+        }
+    }
+
+    $root | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+}
+
 function Expand-AdvancedRuleSits {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Rule)
@@ -316,6 +354,7 @@ function ConvertTo-NormalisedBaseline {
         ReferencedLabels = $sortedLabels
     }
     $normalised = Compress-EnumCollisions -Normalised $normalised
+    $normalised = Sort-NormalisedKeys -Normalised $normalised
 
     [PSCustomObject]@{
         Normalised     = $normalised
