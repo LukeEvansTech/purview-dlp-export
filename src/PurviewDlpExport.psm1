@@ -503,7 +503,10 @@ function Export-DlpBaselineMarkdown {
 
     $mdPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.md"
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($mdPath, $sb.ToString(), $utf8NoBom)
+    # Force LF line endings — StringBuilder.AppendLine uses Environment.NewLine which is CRLF on
+    # Windows, breaking cross-OS byte-stability against the LF-locked snapshot fixture.
+    $content = $sb.ToString() -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($mdPath, $content, $utf8NoBom)
 
     [PSCustomObject]@{ MarkdownPath = $mdPath }
 }
