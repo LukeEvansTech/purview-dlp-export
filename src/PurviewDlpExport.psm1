@@ -9,11 +9,12 @@ $script:VolatileFields = @(
     'ImmutableId'
 )
 
-function Compress-EnumCollisions {
+function Compress-EnumCollision {
     # Flattens Purview enum-collision pairs ({ "value": N, "Value": "X" }) in serialised JSON to
     # just the string label "X". JSON-string regex is used instead of a recursive object walk
     # because real Purview objects can blow PowerShell's call-stack on deep traversal.
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param([Parameter(Mandatory)] $Normalised)
 
     $json = $Normalised | ConvertTo-Json -Depth 20
@@ -26,12 +27,13 @@ function Compress-EnumCollisions {
     $json | ConvertFrom-Json
 }
 
-function Sort-NormalisedKeys {
+function Format-NormalisedKey {
     # Deep alphabetical sort of all object keys in a normalised inventory. Without this, nested
     # Purview objects (inside EndpointDlpExtendedLocations etc.) keep whatever key order the cmdlet
     # produces, which varies between calls and breaks byte-stability. Uses an iterative DFS with
     # an explicit stack — recursion would overflow on deep Purview structures.
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param([Parameter(Mandatory)] $Normalised)
 
     $json = $Normalised | ConvertTo-Json -Depth 20
@@ -64,8 +66,9 @@ function Sort-NormalisedKeys {
     $root | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 }
 
-function Expand-AdvancedRuleSits {
+function Expand-AdvancedRuleReference {
     [CmdletBinding()]
+    [OutputType([Hashtable])]
     param([Parameter(Mandatory)] $Rule)
 
     $sits   = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -121,8 +124,9 @@ function Expand-AdvancedRuleSits {
     @{ Sits = $sits.ToArray(); Labels = $labels.ToArray() }
 }
 
-function Backfill-AdvancedRuleRefs {
+function Resolve-AdvancedRuleReference {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)] $Rule,
         [Parameter(Mandatory)] $SitNameById,    # hashtable Id -> Name
@@ -132,7 +136,7 @@ function Backfill-AdvancedRuleRefs {
     $hasAdvancedRule = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
     if (-not $hasAdvancedRule) { return $Rule }
 
-    $expanded = Expand-AdvancedRuleSits -Rule $Rule
+    $expanded = Expand-AdvancedRuleReference -Rule $Rule
 
     $copy = [ordered]@{}
     foreach ($name in ($Rule.PSObject.Properties.Name | Sort-Object)) {
@@ -161,7 +165,17 @@ function Backfill-AdvancedRuleRefs {
 }
 
 function Connect-PurviewDlpSession {
+    <#
+    .SYNOPSIS
+        Connects to the Microsoft Purview Security & Compliance PowerShell endpoint.
+    .DESCRIPTION
+        Wraps Connect-IPPSSession with a clear error if ExchangeOnlineManagement is not installed.
+        Interactive authentication only; service principal / certificate auth is not supported in this version.
+    .PARAMETER UserPrincipalName
+        The UPN of the administrator account to authenticate as. MFA will be prompted.
+    #>
     [CmdletBinding()]
+    [OutputType([Void])]
     param(
         [Parameter(Mandatory)] [string] $UserPrincipalName
     )
@@ -176,7 +190,17 @@ function Connect-PurviewDlpSession {
 }
 
 function Get-DlpInventory {
+    <#
+    .SYNOPSIS
+        Reads the full DLP rule estate from the connected Purview tenant.
+    .DESCRIPTION
+        Calls Get-DlpCompliancePolicy and Get-DlpComplianceRule, walks each rule's AdvancedRule
+        JSON for SIT/label references, and resolves those references to names via
+        Get-DlpSensitiveInformationType and Get-Label. Throws if the inventory comes back empty
+        (signals an auth-scope problem rather than a truly empty tenant).
+    #>
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param()
 
     $policies = @(Get-DlpCompliancePolicy -ErrorAction Stop)
@@ -195,7 +219,7 @@ function Get-DlpInventory {
     foreach ($rule in $rules) {
         # Expand AdvancedRule first — for advanced rules, inline ContentContainsSensitiveInformation
         # has null properties; the real SIT/label refs are inside the AdvancedRule JSON string.
-        $expanded = Expand-AdvancedRuleSits -Rule $rule
+        $expanded = Expand-AdvancedRuleReference -Rule $rule
         foreach ($s in $expanded.Sits)   { if ($s.Id) { [void]$sitIds.Add($s.Id) } }
         foreach ($l in $expanded.Labels) { if ($l.Id) { [void]$labelIds.Add($l.Id) } }
 
@@ -246,8 +270,13 @@ function Get-DlpInventory {
     }
 }
 
-function Remove-VolatileFields {
+function Remove-VolatileField {
+    # Pure function — returns a new PSCustomObject without the specified fields. Does not mutate
+    # the input or any external state, so PSUseShouldProcess does not apply here even though the
+    # verb is 'Remove'.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
         $Record,
@@ -267,6 +296,7 @@ function Remove-VolatileFields {
 
 function Add-OrphanAnnotation {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
         $Rule,
@@ -317,7 +347,19 @@ function Add-OrphanAnnotation {
 }
 
 function ConvertTo-NormalisedBaseline {
+    <#
+    .SYNOPSIS
+        Transforms a raw DLP inventory into a byte-stable, semantics-only baseline.
+    .DESCRIPTION
+        Strips volatile fields (timestamps, ETags, RunspaceIds), backfills SIT/label names from
+        AdvancedRule references, annotates orphan references, flattens Purview enum-collision
+        objects, and deep-sorts all object keys alphabetically. The output is suitable for
+        diffing across runs — re-running on an unchanged tenant produces a byte-identical body.
+    .PARAMETER Inventory
+        The raw inventory object returned by Get-DlpInventory.
+    #>
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
         $Inventory
@@ -332,12 +374,12 @@ function ConvertTo-NormalisedBaseline {
     foreach ($l in $Inventory.ReferencedLabels) { $labelNameById[$l.Id] = $l.Name }
 
     $strippedPolicies = @($Inventory.Policies | ForEach-Object {
-        Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+        Remove-VolatileField -Record $_ -Fields $script:VolatileFields
     } | Sort-Object Name)
 
     $strippedRules = @($Inventory.Rules | ForEach-Object {
-        $stripped   = Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
-        $backfilled = Backfill-AdvancedRuleRefs -Rule $stripped `
+        $stripped   = Remove-VolatileField -Record $_ -Fields $script:VolatileFields
+        $backfilled = Resolve-AdvancedRuleReference -Rule $stripped `
             -SitNameById $sitNameById -LabelNameById $labelNameById
         Add-OrphanAnnotation -Rule $backfilled `
             -KnownSitIds $knownSitIds `
@@ -353,8 +395,8 @@ function ConvertTo-NormalisedBaseline {
         ReferencedSits   = $sortedSits
         ReferencedLabels = $sortedLabels
     }
-    $normalised = Compress-EnumCollisions -Normalised $normalised
-    $normalised = Sort-NormalisedKeys -Normalised $normalised
+    $normalised = Compress-EnumCollision -Normalised $normalised
+    $normalised = Format-NormalisedKey -Normalised $normalised
 
     [PSCustomObject]@{
         Normalised     = $normalised
@@ -363,7 +405,16 @@ function ConvertTo-NormalisedBaseline {
 }
 
 function Export-DlpBaselineJson {
+    <#
+    .SYNOPSIS
+        Writes a normalised baseline to disk as JSON plus a .meta.json audit sidecar.
+    .DESCRIPTION
+        Produces two files in OutDir: baseline-<DateStamp>-<Tenant>.json (the byte-stable body)
+        and baseline-<DateStamp>-<Tenant>.meta.json (extract timestamp, runner UPN, tool version,
+        stripped-fields manifest). Both are written as UTF-8 without BOM.
+    #>
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)] $Normalised,
         [Parameter(Mandatory)] [string] $OutDir,
@@ -400,8 +451,9 @@ function Export-DlpBaselineJson {
     }
 }
 
-function Format-RuleConditions {
+function Format-RuleCondition {
     [CmdletBinding()]
+    [OutputType([String])]
     param([Parameter(Mandatory)] $Rule)
 
     $parts = @()
@@ -432,8 +484,9 @@ function Format-RuleConditions {
     if ($parts.Count -eq 0) { '(no conditions)' } else { $parts -join ' OR ' }
 }
 
-function Format-RuleActions {
+function Format-RuleAction {
     [CmdletBinding()]
+    [OutputType([String])]
     param([Parameter(Mandatory)] $Rule)
 
     $actions = @()
@@ -450,7 +503,17 @@ function Format-RuleActions {
 }
 
 function Export-DlpBaselineMarkdown {
+    <#
+    .SYNOPSIS
+        Writes a human-readable Markdown summary of the normalised baseline.
+    .DESCRIPTION
+        Produces baseline-<DateStamp>-<Tenant>.md in OutDir with a per-policy and per-rule
+        narrative — conditions in plain English (resolved SIT/label names, keyword lists),
+        actions (block/notify/incident report), exception clauses. LF line endings throughout
+        for cross-OS byte-stability.
+    #>
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)] $Normalised,
         [Parameter(Mandatory)] [string] $OutDir,
@@ -489,8 +552,8 @@ function Export-DlpBaselineMarkdown {
             [void]$sb.AppendLine("- Mode: $($rule.Mode)")
             [void]$sb.AppendLine("- Priority: $($rule.Priority)")
             [void]$sb.AppendLine("- Disabled: $($rule.Disabled)")
-            [void]$sb.AppendLine("- Conditions: $(Format-RuleConditions -Rule $rule)")
-            [void]$sb.AppendLine("- Actions: $(Format-RuleActions -Rule $rule)")
+            [void]$sb.AppendLine("- Conditions: $(Format-RuleCondition -Rule $rule)")
+            [void]$sb.AppendLine("- Actions: $(Format-RuleAction -Rule $rule)")
             if ($rule.PSObject.Properties.Name -contains 'ExceptIfRecipientDomainIs' -and $rule.ExceptIfRecipientDomainIs) {
                 [void]$sb.AppendLine("- Except if recipient domain in: $($rule.ExceptIfRecipientDomainIs -join ', ')")
             }
