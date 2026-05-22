@@ -1,0 +1,78 @@
+# Zensical Configuration
+# https://zensical.org/docs/
+
+[project]
+site_name = "purview-dlp-export"
+site_description = "Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline (JSON + Markdown summary + audit sidecar)"
+site_author = "Luke Evans"
+site_url = "https://LukeEvansTech.github.io/purview-dlp-export/"
+copyright = "Copyright © 2026 Luke Evans"
+
+docs_dir = "docs"
+site_dir = "site"
+use_directory_urls = true
+dev_addr = "localhost:8000"
+
+[project.theme]
+name = "material"
+variant = "modern"
+language = "en"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "blue"
+accent = "light-blue"
+toggle_icon = "material/brightness-7"
+toggle_name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "blue"
+accent = "light-blue"
+toggle_icon = "material/brightness-4"
+toggle_name = "Switch to light mode"
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+# Repository Integration
+repo_url = "https://github.com/LukeEvansTech/purview-dlp-export/"
+repo_name = "LukeEvansTech/purview-dlp-export"
+edit_uri = "edit/main/docs/docs"
+
+# Navigation Structure
+[[nav]]
+Home = "index.md"
+
+[[nav]]
+"Quick start" = "quickstart.md"
+
+[[nav]]
+"Output schema" = "output-schema.md"
+
+[[nav]]
+Troubleshooting = "troubleshooting.md"
+
+[[nav]]
+Contributing = "contributing.md"
+
+[[nav]]
+Changelog = "CHANGELOG.md"
+
+# Markdown Extensions
+[markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc = { permalink = true }
+
+[markdown_extensions.pymdownx]
+highlight = { anchor_linenums = true, line_spans = "__span", pygments_lang_class = true }
+inlinehilite = {}
+snippets = {}
+superfences = {}
+details = {}
+tabbed = { alternate_style = true }
