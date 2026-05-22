@@ -33,9 +33,10 @@ function Expand-AdvancedRuleSits {
     $sits   = [System.Collections.Generic.List[PSCustomObject]]::new()
     $labels = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    $isAdvanced = $Rule.PSObject.Properties.Name -contains 'IsAdvancedRule' -and $Rule.IsAdvancedRule
-    $hasJson    = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
-    if (-not ($isAdvanced -and $hasJson)) {
+    # Purview puts the canonical condition in AdvancedRule even when IsAdvancedRule is false
+    # (simple-UI rules are stored as AdvancedRule JSON under the hood). Don't gate on the flag.
+    $hasJson = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
+    if (-not $hasJson) {
         return @{ Sits = @(); Labels = @() }
     }
 
@@ -90,8 +91,8 @@ function Backfill-AdvancedRuleRefs {
         [Parameter(Mandatory)] $LabelNameById   # hashtable Id -> Name
     )
 
-    $isAdvanced = $Rule.PSObject.Properties.Name -contains 'IsAdvancedRule' -and $Rule.IsAdvancedRule
-    if (-not $isAdvanced) { return $Rule }
+    $hasAdvancedRule = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
+    if (-not $hasAdvancedRule) { return $Rule }
 
     $expanded = Expand-AdvancedRuleSits -Rule $Rule
 
