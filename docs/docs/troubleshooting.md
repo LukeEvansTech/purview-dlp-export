@@ -23,7 +23,7 @@ Real issues encountered during development and bring-up, with resolution notes. 
 If you've just been added to the role, wait a few minutes for replication and re-authenticate (close and re-open the PowerShell session before running `Connect-IPPSSession` again — token caching can serve a stale session).
 
 !!! note
-    The same role check applies if you see "0 rules returned" — policies exist but the account can't enumerate rules. Same resolution.
+The same role check applies if you see "0 rules returned" — policies exist but the account can't enumerate rules. Same resolution.
 
 ---
 
@@ -56,7 +56,7 @@ grep -E "(New|Set|Remove|Enable|Disable|Reset)-(Dlp|Compliance|Label|Sensitive|I
 Expected: no output. Any match is a bug — surface it immediately as an issue.
 
 !!! note "Avoid over-broad grep patterns"
-    A naive grep for `Set-` will produce false positives: `Set-StrictMode` (PowerShell standard) and `Remove-VolatileFields` (internal helper, not a Purview cmdlet). The pattern above is scoped to Purview-domain noun prefixes only, which avoids these false positives.
+A naive grep for `Set-` will produce false positives: `Set-StrictMode` (PowerShell standard) and `Remove-VolatileFields` (internal helper, not a Purview cmdlet). The pattern above is scoped to Purview-domain noun prefixes only, which avoids these false positives.
 
 ---
 

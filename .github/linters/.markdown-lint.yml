@@ -1,0 +1,20 @@
+---
+default: true
+
+# Allow long lines, including in tables and fenced code blocks (the
+# Troubleshooting section has dense paragraphs and code samples that
+# would be ugly to manually wrap).
+MD013:
+  line_length: 400
+  tables: false
+  code_blocks: false
+
+# MD060/table-column-style insists on padded "| col1 | col2 |" tables
+# instead of the more compact "|col1|col2|" form. Stylistic — disable.
+MD060: false
+
+# MD031/blanks-around-fences and MD032/blanks-around-lists fight against
+# the common "list item with embedded code block" pattern that GitHub
+# renders fine. Stylistic — disable.
+MD031: false
+MD032: false

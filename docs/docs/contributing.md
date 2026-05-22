@@ -1,8 +1,8 @@
 # Contributing
 
-PRs welcome. The codebase is small — a PowerShell module, a thin entrypoint script, and Pester tests — and the design rationale is in the git log and the [design spec](https://github.com/LukeEvansTech/purview-dlp-export/blob/main/docs/docs/output-schema.md).
+PRs welcome. The codebase is small — a PowerShell module, a thin entrypoint script, and Pester tests — and the design rationale is in the Git log and the [design spec](https://github.com/LukeEvansTech/purview-dlp-export/blob/main/docs/docs/output-schema.md).
 
-## Repo layout
+## Repository layout
 
 ```text
 purview-dlp-export/

@@ -18,7 +18,7 @@
 
 ## Install
 
-Clone the repo — the scripts run in place:
+Clone the repository — the scripts run in place:
 
 ```bash
 git clone https://github.com/LukeEvansTech/purview-dlp-export.git
@@ -59,11 +59,11 @@ Wrote:
 
 Three files in `OutDir`:
 
-| File | Description |
-|---|---|
-| `baseline-YYYYMMDD-<tenant>.json` | Byte-stable normalised ruleset body |
+| File                                   | Description                                     |
+| -------------------------------------- | ----------------------------------------------- |
+| `baseline-YYYYMMDD-<tenant>.json`      | Byte-stable normalised ruleset body             |
 | `baseline-YYYYMMDD-<tenant>.meta.json` | Audit sidecar (timestamp, runner, tool version) |
-| `baseline-YYYYMMDD-<tenant>.md` | Human-readable per-policy/per-rule narrative |
+| `baseline-YYYYMMDD-<tenant>.md`        | Human-readable per-policy/per-rule narrative    |
 
 See [Output schema](output-schema.md) for the full structure of each file.
 
@@ -86,4 +86,4 @@ diff out/baseline-YYYYMMDD-<tenant>.json.first out/baseline-YYYYMMDD-<tenant>.js
 ```
 
 !!! note "Same-day re-runs overwrite silently"
-    The file name includes a `YYYYMMDD` datestamp, not a timestamp, so same-day re-runs overwrite the previous file. Because the JSON body is byte-identical on unchanged tenants this is safe. If you need to preserve multiple within-day captures, copy the file aside before re-running.
+The filename includes a `YYYYMMDD` datestamp, not a timestamp, so same-day re-runs overwrite the previous file. Because the JSON body is byte-identical on unchanged tenants this is safe. If you need to preserve multiple within-day captures, copy the file aside before re-running.

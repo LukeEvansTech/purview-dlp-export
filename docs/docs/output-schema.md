@@ -6,15 +6,15 @@ Every run produces three files. The JSON body is the machine-readable baseline; 
 
 ## JSON body — `baseline-YYYYMMDD-<tenant>.json`
 
-The byte-stable normalised ruleset. Re-running on an unchanged tenant produces an identical file — this is the property that makes `git diff` of successive baselines a clean change log.
+The byte-stable normalised ruleset. Re-running on an unchanged tenant produces an identical file — this is the property that makes `git diff` of successive baselines a clean changelog.
 
 ### Top-level keys
 
-| Key | Type | What it contains |
-|---|---|---|
-| `Policies` | Array | All DLP compliance policies in the tenant, sorted by `Name` ascending |
-| `Rules` | Array | All DLP compliance rules, sorted by `ParentPolicyName` then `Name` ascending |
-| `ReferencedSits` | Array | `{ Id, Name }` pairs for every SIT referenced by any rule, sorted by `Name` |
+| Key                | Type  | What it contains                                                                          |
+| ------------------ | ----- | ----------------------------------------------------------------------------------------- |
+| `Policies`         | Array | All DLP compliance policies in the tenant, sorted by `Name` ascending                     |
+| `Rules`            | Array | All DLP compliance rules, sorted by `ParentPolicyName` then `Name` ascending              |
+| `ReferencedSits`   | Array | `{ Id, Name }` pairs for every SIT referenced by any rule, sorted by `Name`               |
 | `ReferencedLabels` | Array | `{ Id, Name }` pairs for every sensitivity label referenced by any rule, sorted by `Name` |
 
 ### Stripped (volatile) fields
@@ -83,13 +83,13 @@ In the Markdown summary, orphan references render as `<orphan id=GUID>`. Surfaci
 
 Written alongside the JSON body. Contains fields that vary per run and therefore cannot be in the stable body without breaking diff stability.
 
-| Field | What it is |
-|---|---|
-| `Tenant` | The `-Tenant` argument passed to the entrypoint |
-| `RunnerUpn` | The `-UserPrincipalName` argument (the account that authenticated) |
-| `ExtractTimestampUtc` | ISO 8601 UTC timestamp of when the extract ran |
-| `StrippedFields` | Array of field names removed from the body — the complete volatile-field manifest |
-| `ToolVersion` | `ModuleVersion` from `src/PurviewDlpExport.psd1` at the time of the run |
+| Field                 | What it is                                                                        |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `Tenant`              | The `-Tenant` argument passed to the entrypoint                                   |
+| `RunnerUpn`           | The `-UserPrincipalName` argument (the account that authenticated)                |
+| `ExtractTimestampUtc` | ISO 8601 UTC timestamp of when the extract ran                                    |
+| `StrippedFields`      | Array of field names removed from the body — the complete volatile-field manifest |
+| `ToolVersion`         | `ModuleVersion` from `src/PurviewDlpExport.psd1` at the time of the run           |
 
 Example:
 
@@ -139,7 +139,7 @@ Conditions are rendered in plain English:
 - SIT references: `SIT *AWS Access Key*`
 - Label references: `label *Highly Confidential*`
 - Keyword conditions: `keywords: card number, credit card, cvv`
-- Multiple conditions joined with ` OR `
+- Multiple conditions joined with `OR`
 - No conditions: `(no conditions)`
 
 Actions are rendered as a semicolon-separated list: `block; notify: LastModifier, Owner; incident report: Owner`.
