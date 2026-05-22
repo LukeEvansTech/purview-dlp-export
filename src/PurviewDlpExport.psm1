@@ -270,11 +270,8 @@ function Get-DlpInventory {
     }
 }
 
-function Remove-VolatileField {
-    # Pure function — returns a new PSCustomObject without the specified fields. Does not mutate
-    # the input or any external state, so PSUseShouldProcess does not apply here even though the
-    # verb is 'Remove'.
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+function Skip-VolatileField {
+    # Pure function — returns a new PSCustomObject without the specified fields.
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
@@ -374,11 +371,11 @@ function ConvertTo-NormalisedBaseline {
     foreach ($l in $Inventory.ReferencedLabels) { $labelNameById[$l.Id] = $l.Name }
 
     $strippedPolicies = @($Inventory.Policies | ForEach-Object {
-        Remove-VolatileField -Record $_ -Fields $script:VolatileFields
+        Skip-VolatileField -Record $_ -Fields $script:VolatileFields
     } | Sort-Object Name)
 
     $strippedRules = @($Inventory.Rules | ForEach-Object {
-        $stripped   = Remove-VolatileField -Record $_ -Fields $script:VolatileFields
+        $stripped   = Skip-VolatileField -Record $_ -Fields $script:VolatileFields
         $backfilled = Resolve-AdvancedRuleReference -Rule $stripped `
             -SitNameById $sitNameById -LabelNameById $labelNameById
         Add-OrphanAnnotation -Rule $backfilled `

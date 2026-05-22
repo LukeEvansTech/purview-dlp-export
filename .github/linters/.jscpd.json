@@ -1,0 +1,12 @@
+{
+  "threshold": 10,
+  "reporters": ["consoleFull"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/.terraform/**",
+    "**/.venv/**",
+    "**/dist/**",
+    "**/build/**"
+  ]
+}
