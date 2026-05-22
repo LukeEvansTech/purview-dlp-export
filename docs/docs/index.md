@@ -35,6 +35,3 @@ The Markdown summary exists because "the DLP Team needs to read it". A JSON file
 ## License
 
 [MIT](https://github.com/LukeEvansTech/purview-dlp-export/blob/main/LICENSE)
-
-!!! warning "LICENSE file pending"
-A `LICENSE` file has not yet been committed to this repository. The intent is MIT. This will be added in a follow-up commit.
