@@ -117,10 +117,32 @@
       "ObjectVersion": 2,
       "ETag": "W/\"rule004\"",
       "ImmutableId": "rule-orphan-sit"
+    },
+    {
+      "Name": "Block UK PII (Advanced Rule)",
+      "ParentPolicyName": "Block Credential Leakage",
+      "Mode": "Enable",
+      "Priority": 5,
+      "Disabled": false,
+      "IsAdvancedRule": true,
+      "BlockAccess": true,
+      "ContentContainsSensitiveInformation": [
+        { "id": null, "name": null, "classifiertype": null, "confidencelevel": null, "maxconfidence": null, "minconfidence": null, "maxcount": null, "mincount": null },
+        { "id": null, "name": null, "classifiertype": null, "confidencelevel": null, "maxconfidence": null, "minconfidence": null, "maxcount": null, "mincount": null }
+      ],
+      "AdvancedRule": "{\"Version\":\"1.0\",\"Condition\":{\"Operator\":\"And\",\"SubConditions\":[{\"ConditionName\":\"ContentContainsSensitiveInformation\",\"Value\":[{\"id\":\"f93de4be-d94c-40df-a8be-461738047551\",\"name\":\"U.K. Driver's License Number\",\"maxconfidence\":\"100\",\"minconfidence\":\"75\",\"classifiertype\":\"Content\",\"mincount\":\"10\",\"maxcount\":\"-1\",\"confidencelevel\":\"Medium\"},{\"id\":\"50842eb7-edc8-4019-85dd-5a5c1f2bb085\",\"name\":\"Credit Card Number\",\"maxconfidence\":\"100\",\"minconfidence\":\"75\",\"classifiertype\":\"Content\",\"mincount\":\"1\",\"maxcount\":\"-1\",\"confidencelevel\":\"High\"}]}]}}",
+      "RunspaceId": "11111111-1111-1111-1111-111111111111",
+      "WhenCreatedUTC": "2025-03-10T08:00:00Z",
+      "WhenChangedUTC": "2026-01-15T12:00:00Z",
+      "ObjectVersion": 4,
+      "ETag": "W/\"rule005\"",
+      "ImmutableId": "rule-uk-pii-advanced"
     }
   ],
   "ReferencedSits": [
-    { "Id": "sit-aws-access-key", "Name": "AWS Access Key" }
+    { "Id": "sit-aws-access-key", "Name": "AWS Access Key" },
+    { "Id": "f93de4be-d94c-40df-a8be-461738047551", "Name": "U.K. Driver's License Number" },
+    { "Id": "50842eb7-edc8-4019-85dd-5a5c1f2bb085", "Name": "Credit Card Number" }
   ],
   "ReferencedLabels": [
     { "Id": "label-highly-confidential", "Name": "Highly Confidential" }

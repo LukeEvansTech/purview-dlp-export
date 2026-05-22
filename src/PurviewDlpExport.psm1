@@ -9,6 +9,137 @@ $script:VolatileFields = @(
     'ImmutableId'
 )
 
+function Expand-EnumCollisions {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [AllowNull()] $Node)
+
+    if ($null -eq $Node) { return $null }
+
+    # Detect enum-collision shape: an object that has exactly two properties
+    # named 'value' (lowercase) and 'Value' (uppercase) by case.
+    if ($Node -is [PSCustomObject]) {
+        $propNames = $Node.PSObject.Properties.Name
+        $hasLower = $propNames -ccontains 'value'
+        $hasUpper = $propNames -ccontains 'Value'
+        if ($hasLower -and $hasUpper -and $propNames.Count -eq 2) {
+            return $Node.PSObject.Properties['Value'].Value
+        }
+
+        $copy = [ordered]@{}
+        foreach ($p in ($propNames | Sort-Object)) {
+            $copy[$p] = Expand-EnumCollisions -Node $Node.PSObject.Properties[$p].Value
+        }
+        return [PSCustomObject]$copy
+    }
+
+    if ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) {
+        # Use foreach (language keyword) not ForEach-Object (cmdlet) — under Set-StrictMode -Version Latest
+        # the pipeline $_ wraps scalars (strings, booleans) in PSCustomObject, breaking type checks.
+        $list = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Node) {
+            $list.Add((Expand-EnumCollisions -Node $item))
+        }
+        return $list.ToArray()
+    }
+
+    return $Node
+}
+
+function Expand-AdvancedRuleSits {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Rule)
+
+    $sits   = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $labels = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    $isAdvanced = $Rule.PSObject.Properties.Name -contains 'IsAdvancedRule' -and $Rule.IsAdvancedRule
+    $hasJson    = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
+    if (-not ($isAdvanced -and $hasJson)) {
+        return @{ Sits = @(); Labels = @() }
+    }
+
+    try {
+        $parsed = $Rule.AdvancedRule | ConvertFrom-Json
+    } catch {
+        return @{ Sits = @(); Labels = @() }
+    }
+
+    if ($null -eq $parsed.Condition -or $null -eq $parsed.Condition.SubConditions) {
+        return @{ Sits = @(); Labels = @() }
+    }
+
+    foreach ($sub in $parsed.Condition.SubConditions) {
+        if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
+        if ($null -eq $sub.Value) { continue }
+
+        foreach ($item in $sub.Value) {
+            # Check for nested label/SIT shape (has Groups)
+            if ($item.PSObject.Properties.Name -contains 'Groups' -and $null -ne $item.Groups) {
+                foreach ($group in $item.Groups) {
+                    if ($null -eq $group.Labels) { continue }
+                    foreach ($ref in $group.Labels) {
+                        $id   = $ref.Id
+                        $name = $ref.Name
+                        if ($ref.Type -eq 'Sensitivity') {
+                            $labels.Add([PSCustomObject]@{ Id = $id; Name = $name })
+                        } else {
+                            $sits.Add([PSCustomObject]@{ Id = $id; Name = $name })
+                        }
+                    }
+                }
+            } else {
+                # Flat SIT shape
+                $id   = if ($item.PSObject.Properties.Name -contains 'id') { $item.id } else { $item.Id }
+                $name = if ($item.PSObject.Properties.Name -contains 'name') { $item.name } else { $item.Name }
+                if ($id) {
+                    $sits.Add([PSCustomObject]@{ Id = $id; Name = $name })
+                }
+            }
+        }
+    }
+
+    @{ Sits = $sits.ToArray(); Labels = $labels.ToArray() }
+}
+
+function Backfill-AdvancedRuleRefs {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Rule,
+        [Parameter(Mandatory)] $SitNameById,    # hashtable Id -> Name
+        [Parameter(Mandatory)] $LabelNameById   # hashtable Id -> Name
+    )
+
+    $isAdvanced = $Rule.PSObject.Properties.Name -contains 'IsAdvancedRule' -and $Rule.IsAdvancedRule
+    if (-not $isAdvanced) { return $Rule }
+
+    $expanded = Expand-AdvancedRuleSits -Rule $Rule
+
+    $copy = [ordered]@{}
+    foreach ($name in ($Rule.PSObject.Properties.Name | Sort-Object)) {
+        $copy[$name] = $Rule.PSObject.Properties[$name].Value
+    }
+
+    if ($expanded.Sits.Count -gt 0) {
+        $copy['ContentContainsSensitiveInformation'] = @($expanded.Sits | ForEach-Object {
+            [PSCustomObject]@{
+                Id   = $_.Id
+                Name = if ($SitNameById.ContainsKey($_.Id)) { $SitNameById[$_.Id] } else { $_.Name }
+            }
+        })
+    }
+    if ($expanded.Labels.Count -gt 0) {
+        $copy['HasSensitiveInformation'] = @($expanded.Labels | ForEach-Object {
+            [PSCustomObject]@{
+                Id   = $_.Id
+                Name = if ($LabelNameById.ContainsKey($_.Id)) { $LabelNameById[$_.Id] } else { $_.Name }
+                Type = 'label'
+            }
+        })
+    }
+
+    [PSCustomObject]$copy
+}
+
 function Connect-PurviewDlpSession {
     [CmdletBinding()]
     param(
@@ -42,6 +173,13 @@ function Get-DlpInventory {
     $labelIds = New-Object System.Collections.Generic.HashSet[string]
 
     foreach ($rule in $rules) {
+        # Expand AdvancedRule first — for advanced rules, inline ContentContainsSensitiveInformation
+        # has null properties; the real SIT/label refs are inside the AdvancedRule JSON string.
+        $expanded = Expand-AdvancedRuleSits -Rule $rule
+        foreach ($s in $expanded.Sits)   { if ($s.Id) { [void]$sitIds.Add($s.Id) } }
+        foreach ($l in $expanded.Labels) { if ($l.Id) { [void]$labelIds.Add($l.Id) } }
+
+        # Inline walk — still correct for non-advanced rules.
         if ($rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' `
             -and $null -ne $rule.ContentContainsSensitiveInformation) {
             foreach ($s in $rule.ContentContainsSensitiveInformation) {
@@ -168,13 +306,20 @@ function ConvertTo-NormalisedBaseline {
     $knownSitIds   = @($Inventory.ReferencedSits   | ForEach-Object { $_.Id })
     $knownLabelIds = @($Inventory.ReferencedLabels | ForEach-Object { $_.Id })
 
+    $sitNameById   = @{}
+    foreach ($s in $Inventory.ReferencedSits)   { $sitNameById[$s.Id]   = $s.Name }
+    $labelNameById = @{}
+    foreach ($l in $Inventory.ReferencedLabels) { $labelNameById[$l.Id] = $l.Name }
+
     $strippedPolicies = @($Inventory.Policies | ForEach-Object {
         Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
     } | Sort-Object Name)
 
     $strippedRules = @($Inventory.Rules | ForEach-Object {
-        $stripped = Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
-        Add-OrphanAnnotation -Rule $stripped `
+        $stripped   = Remove-VolatileFields -Record $_ -Fields $script:VolatileFields
+        $backfilled = Backfill-AdvancedRuleRefs -Rule $stripped `
+            -SitNameById $sitNameById -LabelNameById $labelNameById
+        Add-OrphanAnnotation -Rule $backfilled `
             -KnownSitIds $knownSitIds `
             -KnownLabelIds $knownLabelIds
     } | Sort-Object ParentPolicyName, Name)
@@ -188,6 +333,7 @@ function ConvertTo-NormalisedBaseline {
         ReferencedSits   = $sortedSits
         ReferencedLabels = $sortedLabels
     }
+    $normalised = Expand-EnumCollisions -Node $normalised
 
     [PSCustomObject]@{
         Normalised     = $normalised

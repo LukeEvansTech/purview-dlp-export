@@ -2,7 +2,7 @@
 
 - Date: 20260521
 - Policies: 3
-- Rules: 4
+- Rules: 5
 
 ## Policy: Block Credential Leakage
 
@@ -29,6 +29,14 @@
 - Conditions: SIT *<orphan id=sit-deleted-orphan-99999>*
 - Actions: block
 - Comment: Rule points at a SIT that no longer exists.
+
+### Rule: Block UK PII (Advanced Rule)
+
+- Mode: Enable
+- Priority: 5
+- Disabled: False
+- Conditions: SIT *U.K. Driver's License Number* OR SIT *Credit Card Number*
+- Actions: block
 
 ## Policy: Legacy Keyword Blocks
 

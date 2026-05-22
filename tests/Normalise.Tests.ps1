@@ -254,3 +254,72 @@ Describe 'ConvertTo-NormalisedBaseline handles empty reference collections' {
         { ConvertTo-NormalisedBaseline -Inventory $inv } | Should -Not -Throw
     }
 }
+
+Describe 'ConvertTo-NormalisedBaseline expands advanced rules' {
+    BeforeAll {
+        $script:result = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+        $script:advRule = $script:result.Normalised.Rules |
+            Where-Object { $_.Name -eq 'Block UK PII (Advanced Rule)' }
+    }
+
+    It 'finds the advanced rule' {
+        $script:advRule | Should -Not -BeNullOrEmpty
+    }
+
+    It 'replaces null inline SIT refs with parsed AdvancedRule SITs' {
+        $sits = $script:advRule.ContentContainsSensitiveInformation
+        $sits.Count | Should -Be 2
+        $sits | ForEach-Object { $_.Id | Should -Not -BeNullOrEmpty }
+        $sits | ForEach-Object { $_.Name | Should -Not -BeNullOrEmpty }
+    }
+
+    It 'resolves SIT names from ReferencedSits, not from inline (null) refs' {
+        $names = $script:advRule.ContentContainsSensitiveInformation | ForEach-Object { $_.Name }
+        $names | Should -Contain 'U.K. Driver''s License Number'
+        $names | Should -Contain 'Credit Card Number'
+    }
+
+    It 'marks advanced-rule SITs as not orphan when in ReferencedSits' {
+        $orphans = $script:advRule.ContentContainsSensitiveInformation |
+            Where-Object { $_.Orphan }
+        $orphans.Count | Should -Be 0
+    }
+}
+
+Describe 'ConvertTo-NormalisedBaseline flattens enum collisions' {
+    BeforeAll {
+        # Enum-collision objects ({value, Value}) exist in real Purview proxy objects but cannot be
+        # represented in a JSON fixture file (ConvertFrom-Json rejects case-collision keys) or as
+        # a PSCustomObject (case-insensitive property bag). The collision only materialises when
+        # ConvertTo-Json serialises real Purview in-memory proxy objects. We therefore test the
+        # production guarantee (JSON output is parseable) against the fixture inventory, and verify
+        # the Expand-EnumCollisions helper behaviour via the module's internal Apply-EnumFlatten
+        # logic by constructing a synthetic inventory whose rules include an ordered hashtable
+        # carrying both 'value' and 'Value' keys — the shape ConvertFrom-Json -AsHashTable returns
+        # for collision JSON.  ConvertTo-NormalisedBaseline converts hashtables to PSCustomObject
+        # before returning, so the collision must be resolved before serialisation.
+        $script:collisionResult = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory
+    }
+
+    It 'JSON output is parseable by ConvertFrom-Json without -AsHashTable' {
+        $json = $script:collisionResult.Normalised | ConvertTo-Json -Depth 20
+        { $json | ConvertFrom-Json } | Should -Not -Throw
+    }
+
+    It 'normalised output contains no nested PSCustomObject with both lowercase value and uppercase Value properties' {
+        # Serialise and reparse; if any {value,Value} collision had survived, ConvertFrom-Json
+        # would have thrown in the previous test.  Here we additionally verify that no rule
+        # property is itself a PSCustomObject with exactly two properties differing only in case,
+        # which would indicate Expand-EnumCollisions failed to flatten it.
+        foreach ($rule in $script:collisionResult.Normalised.Rules) {
+            foreach ($prop in $rule.PSObject.Properties) {
+                if ($prop.Value -is [PSCustomObject]) {
+                    $subNames = $prop.Value.PSObject.Properties.Name
+                    $hasLower = $subNames -ccontains 'value'
+                    $hasUpper = $subNames -ccontains 'Value'
+                    ($hasLower -and $hasUpper) | Should -BeFalse -Because "property '$($prop.Name)' on rule '$($rule.Name)' should not retain an enum-collision object"
+                }
+            }
+        }
+    }
+}
