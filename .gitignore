@@ -16,6 +16,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Local smoke-test output directory — contains real tenant data, never commit
+out-smoke/
+
 # Local baseline outputs (these should NEVER be committed to the tool repo;
 # they belong with the engagement workspace, not the tool)
 baseline-*.json
