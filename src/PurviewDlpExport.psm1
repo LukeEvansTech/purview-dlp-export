@@ -9,40 +9,21 @@ $script:VolatileFields = @(
     'ImmutableId'
 )
 
-function Expand-EnumCollisions {
+function Compress-EnumCollisions {
+    # Flattens Purview enum-collision pairs ({ "value": N, "Value": "X" }) in serialised JSON to
+    # just the string label "X". JSON-string regex is used instead of a recursive object walk
+    # because real Purview objects can blow PowerShell's call-stack on deep traversal.
     [CmdletBinding()]
-    param([Parameter(Mandatory)] [AllowNull()] $Node)
+    param([Parameter(Mandatory)] $Normalised)
 
-    if ($null -eq $Node) { return $null }
+    $json = $Normalised | ConvertTo-Json -Depth 20
 
-    # Detect enum-collision shape: an object that has exactly two properties
-    # named 'value' (lowercase) and 'Value' (uppercase) by case.
-    if ($Node -is [PSCustomObject]) {
-        $propNames = $Node.PSObject.Properties.Name
-        $hasLower = $propNames -ccontains 'value'
-        $hasUpper = $propNames -ccontains 'Value'
-        if ($hasLower -and $hasUpper -and $propNames.Count -eq 2) {
-            return $Node.PSObject.Properties['Value'].Value
-        }
+    $pattern1 = '\{\s*"value":\s*-?\d+,\s*"Value":\s*("(?:[^"\\]|\\.)*")\s*\}'
+    $pattern2 = '\{\s*"Value":\s*("(?:[^"\\]|\\.)*"),\s*"value":\s*-?\d+\s*\}'
+    $json = [regex]::Replace($json, $pattern1, '$1')
+    $json = [regex]::Replace($json, $pattern2, '$1')
 
-        $copy = [ordered]@{}
-        foreach ($p in ($propNames | Sort-Object)) {
-            $copy[$p] = Expand-EnumCollisions -Node $Node.PSObject.Properties[$p].Value
-        }
-        return [PSCustomObject]$copy
-    }
-
-    if ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) {
-        # Use foreach (language keyword) not ForEach-Object (cmdlet) — under Set-StrictMode -Version Latest
-        # the pipeline $_ wraps scalars (strings, booleans) in PSCustomObject, breaking type checks.
-        $list = [System.Collections.Generic.List[object]]::new()
-        foreach ($item in $Node) {
-            $list.Add((Expand-EnumCollisions -Node $item))
-        }
-        return $list.ToArray()
-    }
-
-    return $Node
+    $json | ConvertFrom-Json
 }
 
 function Expand-AdvancedRuleSits {
@@ -333,7 +314,7 @@ function ConvertTo-NormalisedBaseline {
         ReferencedSits   = $sortedSits
         ReferencedLabels = $sortedLabels
     }
-    $normalised = Expand-EnumCollisions -Node $normalised
+    $normalised = Compress-EnumCollisions -Normalised $normalised
 
     [PSCustomObject]@{
         Normalised     = $normalised
