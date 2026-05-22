@@ -1,0 +1,75 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pester:
+    name: Pester (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ensure Pester 5+ is installed
+        shell: pwsh
+        run: |
+          $existing = Get-Module Pester -ListAvailable | Where-Object { $_.Version.Major -ge 5 } | Select-Object -First 1
+          if ($existing) {
+            Write-Host "Found Pester $($existing.Version)"
+          } else {
+            Write-Host "Installing Pester..."
+            Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+
+      - name: Run Pester tests
+        shell: pwsh
+        run: Invoke-Pester ./tests -CI
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: pester-results-${{ matrix.os }}
+          path: testResults.xml
+          if-no-files-found: ignore
+
+  parse:
+    name: Parse-check scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - name: Verify scripts parse
+        shell: pwsh
+        run: |
+          $files = @(
+            './src/PurviewDlpExport.psm1',
+            './scripts/Export-PurviewDlp.ps1'
+          )
+          $errors = @()
+          foreach ($f in $files) {
+            $parseErrors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$parseErrors)
+            if ($parseErrors) {
+              $errors += [pscustomobject]@{ File = $f; Errors = $parseErrors }
+              Write-Host "::error file=$f::Parse errors:"
+              foreach ($e in $parseErrors) { Write-Host "  $e" }
+            } else {
+              Write-Host "✓ $f"
+            }
+          }
+          if ($errors) { exit 1 }
