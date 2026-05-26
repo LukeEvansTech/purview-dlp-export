@@ -5,7 +5,7 @@
 site_name = "purview-dlp-export"
 site_description = "Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline (JSON + Markdown summary + audit sidecar)"
 site_author = "Luke Evans"
-site_url = "https://LukeEvansTech.github.io/purview-dlp-export/"
+site_url = "https://lukeevanstech.github.io/purview-dlp-export/"
 copyright = "Copyright © 2026 Luke Evans"
 
 docs_dir = "docs"
