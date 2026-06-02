@@ -28,6 +28,11 @@ Describe 'Export-DlpDetailMarkdown' {
         (Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-detail.md') -Raw) |
             Should -Match 'orphan id=sit-deleted-orphan-99999'
     }
+    It 'writes UTF-8 without BOM' {
+        Export-DlpDetailMarkdown -View $script:view -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        $bytes = [System.IO.File]::ReadAllBytes((Join-Path $script:outDir 'baseline-20260601-acme-detail.md'))
+        ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+    }
     It 'is byte-identical across two runs' {
         Export-DlpDetailMarkdown -View $script:view -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
         $first = Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-detail.md') -Raw

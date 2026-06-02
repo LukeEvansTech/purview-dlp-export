@@ -82,7 +82,7 @@
 - Mode: Enforce
 - Enabled: False
 - Priority: 0
-- Detects: 
+- Detects: (no sensitive-info type; see conditions)
 - Conditions:
   - Keywords: card number, credit card, cvv
   - File extensions: pan, card-number

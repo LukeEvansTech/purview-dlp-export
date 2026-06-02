@@ -279,7 +279,7 @@ function Export-DlpOverviewMarkdown {
     if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
 
     $allRules    = @($View.Policies | ForEach-Object { $_.Rules })
-    $policyCount = $View.Policies.Count
+    $policyCount = @($View.Policies).Count
     $ruleCount   = $allRules.Count
     $enforceCount = @($View.Policies | Where-Object { $_.Mode -eq 'Enforce' }).Count
     $testCount    = @($View.Policies | Where-Object { $_.Mode -like 'Test*' }).Count
@@ -303,7 +303,7 @@ function Export-DlpOverviewMarkdown {
             ForEach-Object { ($_ -split ':')[0].Trim() } | Select-Object -Unique) -join '; '
         if (-not $acts) { $acts = '-' }
         $enabledNote = if ($p.Enabled) { $p.Mode } else { "$($p.Mode) (off)" }
-        [void]$sb.AppendLine("| $($p.Name) | $enabledNote | $($p.Workloads) | $($p.Rules.Count) | $detects | $acts | $($p.Priority) |")
+        [void]$sb.AppendLine("| $($p.Name) | $enabledNote | $($p.Workloads) | $(@($p.Rules).Count) | $detects | $acts | $($p.Priority) |")
     }
 
     $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-overview.md"
@@ -356,7 +356,8 @@ function Export-DlpDetailMarkdown {
             [void]$sb.AppendLine("- Mode: $($r.Mode)")
             [void]$sb.AppendLine("- Enabled: $($r.Enabled)")
             [void]$sb.AppendLine("- Priority: $($r.Priority)")
-            [void]$sb.AppendLine("- Detects: $($r.DetectionSummary)")
+            $detectsLine = if ([string]::IsNullOrWhiteSpace($r.DetectionSummary)) { '(no sensitive-info type; see conditions)' } else { $r.DetectionSummary }
+            [void]$sb.AppendLine("- Detects: $detectsLine")
             [void]$sb.AppendLine("- Conditions:")
             foreach ($c in @($r.Conditions)) { [void]$sb.AppendLine("  - $c") }
             [void]$sb.AppendLine("- Actions:")
