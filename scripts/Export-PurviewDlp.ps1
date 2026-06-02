@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+#!/usr/bin/env powershell
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $UserPrincipalName,
@@ -11,8 +11,8 @@ $ErrorActionPreference = 'Stop'
 
 try {
     # Pre-flight
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
-        throw "PowerShell 7 or later required. Current: $($PSVersionTable.PSVersion)"
+    if ($PSVersionTable.PSVersion -lt [version]'5.1') {
+        throw "PowerShell 5.1 or later required. Current: $($PSVersionTable.PSVersion)"
     }
     if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement |
               Where-Object { $_.Version -ge [version]'3.0.0' })) {

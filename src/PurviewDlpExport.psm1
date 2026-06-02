@@ -27,6 +27,31 @@ function Compress-EnumCollision {
     $json | ConvertFrom-Json
 }
 
+function ConvertTo-OrderedTree {
+    # PS 5.1-safe replacement for the PS 6+ AsHashtable switch on ConvertFrom-Json:
+    # deep-converts a PSCustomObject/array tree into [ordered] dictionaries + arrays.
+    # Recursion depth is bounded by JSON nesting, which is shallow for DLP objects (< ~10 levels).
+    # Kept a simple (non-advanced) function on purpose: it returns heterogeneous types
+    # (ordered dictionary, array, or scalar passthrough), which an [OutputType] can't capture.
+    param($Node)
+
+    if ($Node -is [System.Management.Automation.PSCustomObject]) {
+        $o = [ordered]@{}
+        foreach ($p in $Node.PSObject.Properties) {
+            $o[$p.Name] = ConvertTo-OrderedTree -Node $p.Value
+        }
+        return $o
+    }
+    elseif ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) {
+        $arr = @()
+        foreach ($item in $Node) { $arr += ,(ConvertTo-OrderedTree -Node $item) }
+        return ,$arr
+    }
+    else {
+        return $Node
+    }
+}
+
 function Format-NormalisedKey {
     # Deep alphabetical sort of all object keys in a normalised inventory. Without this, nested
     # Purview objects (inside EndpointDlpExtendedLocations etc.) keep whatever key order the cmdlet
@@ -36,8 +61,11 @@ function Format-NormalisedKey {
     [OutputType([PSCustomObject])]
     param([Parameter(Mandatory)] $Normalised)
 
+    # PS 5.1 lacks the AsHashtable switch on ConvertFrom-Json, so build an ordered-dictionary
+    # tree manually. [ordered] preserves insertion order in both 5.1 and 7, which the
+    # sort below relies on (a plain hashtable would re-randomise on re-serialisation).
     $json = $Normalised | ConvertTo-Json -Depth 20
-    $root = $json | ConvertFrom-Json -AsHashtable
+    $root = ConvertTo-OrderedTree -Node ($json | ConvertFrom-Json)
 
     $stack = New-Object System.Collections.Stack
     $stack.Push($root)
