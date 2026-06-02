@@ -376,4 +376,55 @@ function Export-DlpDetailMarkdown {
     [PSCustomObject]@{ DetailPath = $path }
 }
 
-Export-ModuleMember -Function ConvertTo-DlpView, Export-DlpOverviewMarkdown, Export-DlpDetailMarkdown
+function ConvertTo-CsvField {
+    # RFC-4180 quoting: wrap in quotes, double any embedded quotes. Always quote so
+    # commas/semicolons inside multi-value cells never split a row.
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowNull()] $Value)
+    $s = if ($null -eq $Value) { '' } else { [string]$Value }
+    '"' + ($s -replace '"', '""') + '"'
+}
+
+function Export-DlpMatrixCsv {
+    <#
+    .SYNOPSIS
+        Writes the analysis tier: one row per rule for sorting/filtering in Excel.
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory)] $View,
+        [Parameter(Mandatory)][string] $OutDir,
+        [Parameter(Mandatory)][string] $Tenant,
+        [Parameter(Mandatory)][string] $DateStamp
+    )
+    if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.Append("Policy,Rule,Workloads,Enabled,Mode,Priority,Detects,Conditions,Actions,Exceptions`n")
+
+    foreach ($p in $View.Policies) {
+        foreach ($r in $p.Rules) {
+            $row = @(
+                (ConvertTo-CsvField $p.Name),
+                (ConvertTo-CsvField $r.Name),
+                (ConvertTo-CsvField $p.Workloads),
+                (ConvertTo-CsvField $r.Enabled),
+                (ConvertTo-CsvField $r.Mode),
+                (ConvertTo-CsvField $r.Priority),
+                (ConvertTo-CsvField $r.DetectionSummary),
+                (ConvertTo-CsvField (@($r.Conditions) -join '; ')),
+                (ConvertTo-CsvField (@($r.Actions) -join '; ')),
+                (ConvertTo-CsvField (@($r.Exceptions) -join '; '))
+            ) -join ','
+            [void]$sb.Append("$row`n")
+        }
+    }
+
+    $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-matrix.csv"
+    Write-NoBomLf -Path $path -Content $sb.ToString()
+    [PSCustomObject]@{ MatrixPath = $path }
+}
+
+Export-ModuleMember -Function ConvertTo-DlpView, Export-DlpOverviewMarkdown, Export-DlpDetailMarkdown, Export-DlpMatrixCsv
