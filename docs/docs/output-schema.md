@@ -1,6 +1,6 @@
 # Output schema
 
-Every run produces three files. The JSON body is the machine-readable baseline; the meta sidecar is the audit trail; the Markdown summary is the human-readable narrative.
+Every run produces five files. The JSON body is the machine-readable baseline; the meta sidecar is the audit trail; the three human-readable outputs (overview Markdown, detail Markdown, and CSV matrix) serve different reading audiences.
 
 ---
 
@@ -75,7 +75,7 @@ If a rule references a SIT or label ID that no longer exists in the tenant (i.e.
 }
 ```
 
-In the Markdown summary, orphan references render as `<orphan id=GUID>`. Surfacing orphans is deliberate — they are candidates for clean-up during realignment.
+In the detail Markdown and the CSV matrix, orphan references render as `<orphan id=GUID>`. Surfacing orphans is deliberate — they are candidates for clean-up during realignment.
 
 ---
 
@@ -112,40 +112,71 @@ Example:
 
 ---
 
-## Markdown summary — `baseline-YYYYMMDD-<tenant>.md`
+## Overview Markdown — `baseline-YYYYMMDD-<tenant>-overview.md`
 
-Designed to be read by the DLP Team without opening the JSON. The document structure mirrors the JSON — same sort order, same data — but rendered as prose.
+Designed for a quick scan of the full DLP estate. One header block with policy/rule counts, followed by one Markdown table row per policy.
 
-### Top-of-file counts
+### Header block
 
 ```markdown
-# Purview DLP Baseline — acme
+# Purview DLP Overview - acme
 
 - Date: 20260522
-- Policies: 12
-- Rules: 47
+- Policies: 3 (2 enforce, 1 test)
+- Rules: 12 (1 disabled)
 ```
 
-### Per-policy section
+### Policy table
 
-One `## Policy: <Name>` heading per policy. Fields rendered: `Mode`, `Enabled`, `Workload`, `Priority`, and `Comment` (if present).
+Columns: `Policy`, `Mode`, `Workloads`, `Rules`, `Detects`, `Acts`, `Priority`.
 
-### Per-rule sub-section
+- **Workloads** — raw Purview workload tokens mapped to friendly names (e.g. `OneDriveForBusiness` → `OneDrive`).
+- **Detects** — unique detection summaries (SIT/label names) across all rules in the policy, semicolon-separated.
+- **Acts** — unique action verbs across all rules, semicolon-separated.
 
-One `### Rule: <Name>` heading per rule, nested under its parent policy. Fields rendered: `Mode`, `Priority`, `Disabled`, `Conditions`, `Actions`, exception clauses, and `Comment` (if present).
+---
+
+## Detail Markdown — `baseline-YYYYMMDD-<tenant>-detail.md`
+
+A full per-policy/per-rule narrative for deep reading. One `## Policy` section per policy and one `### Rule` sub-section per rule.
+
+### Per-policy block
+
+Fields: `Mode`, `Enabled`, `Priority`, `Applies to` (friendly workloads), included/excluded locations (if present), `Comment` (if present).
+
+### Per-rule block
+
+Fields: `Mode`, `Enabled`, `Priority`, `Detects` (one-line summary), then bulleted lists for `Conditions`, `Actions`, `Exceptions` (if any), and `Comment` (if present).
 
 Conditions are rendered in plain English:
 
-- SIT references: `SIT *AWS Access Key*`
-- Label references: `label *Highly Confidential*`
-- Keyword conditions: `keywords: card number, credit card, cvv`
-- Multiple conditions joined with `OR`
+- SIT references: `SIT: AWS Access Key (high confidence, 1+ instances)`
+- Label references: `Label: Highly Confidential`
+- Keyword conditions: `Keywords: card number, credit card, cvv`
+- File-extension conditions: `File extensions: doc, docx, pdf`
 - No conditions: `(no conditions)`
 
-Actions are rendered as a semicolon-separated list: `block; notify: LastModifier, Owner; incident report: Owner`.
+Advanced-rule confidence and instance-count thresholds are rendered inline (e.g. `medium confidence, 10+ instances`). Orphan references render as `<orphan id=GUID>` — the angle-bracket form makes them visually distinctive.
 
-Orphan references render as `<orphan id=GUID>` — the angle-bracket form makes them visually distinctive.
+---
 
-### Sample
+## CSV matrix — `baseline-YYYYMMDD-<tenant>-matrix.csv`
 
-See [`examples/baseline-sample.md`](https://github.com/LukeEvansTech/purview-dlp-export/blob/main/examples/baseline-sample.md) for a complete rendered example covering all rule types (label-conditioned, SIT-conditioned, keyword-based, orphan reference, disabled rule, rule with exception clauses).
+One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
+
+### Columns
+
+| Column       | What it contains                                                                        |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `Policy`     | Parent policy name                                                                      |
+| `Rule`       | Rule name                                                                               |
+| `Workloads`  | Friendly workload string from the parent policy                                         |
+| `Enabled`    | `True` or `False`                                                                       |
+| `Mode`       | Friendly mode string (`Enforce`, `Test (notify)`, `Test (silent)`, `Disabled`)          |
+| `Priority`   | Rule priority integer                                                                   |
+| `Detects`    | One-line detection summary (SIT/label names, comma-separated)                           |
+| `Conditions` | Full condition list (semicolon-separated, matches the detail Markdown bullet list)      |
+| `Actions`    | Full action list (semicolon-separated)                                                  |
+| `Exceptions` | Exception clauses (semicolon-separated), empty string if none                           |
+
+All data fields are RFC-4180 quoted so commas and semicolons inside values never split a row. The header row is unquoted. Line endings are LF throughout.

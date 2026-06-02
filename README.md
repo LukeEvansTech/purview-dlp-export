@@ -2,11 +2,11 @@
 
 Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline.
 
-Captures policies, rules, and the names of any sensitivity labels and Sensitive Information Types referenced by those rules. Emits a JSON body (byte-stable on unchanged tenants) plus a human-readable Markdown summary and a `.meta.json` sidecar containing audit metadata.
+Captures policies, rules, and the names of any sensitivity labels and Sensitive Information Types referenced by those rules. Emits a JSON body (byte-stable on unchanged tenants), a `.meta.json` audit sidecar, and three layered human-readable outputs: an overview Markdown table, a detail Markdown narrative, and a CSV matrix for Excel analysis.
 
 ## Requirements
 
-- PowerShell 7.x
+- PowerShell 5.1 or later (Windows PowerShell 5.1 supported)
 - `ExchangeOnlineManagement` ≥ 3.x: `Install-Module ExchangeOnlineManagement -MinimumVersion 3.0 -Scope CurrentUser`
 - An account with Compliance Administrator or DLP Reader role on the tenant
 
@@ -20,7 +20,9 @@ Produces in `./out/`:
 
 - `baseline-YYYYMMDD-<tenant>.json` — normalised body, byte-stable
 - `baseline-YYYYMMDD-<tenant>.meta.json` — extract timestamp, runner, stripped-fields manifest
-- `baseline-YYYYMMDD-<tenant>.md` — readable per-policy/per-rule narrative
+- `baseline-YYYYMMDD-<tenant>-overview.md` — one-table scan of all policies (workloads, mode, rule counts, detects)
+- `baseline-YYYYMMDD-<tenant>-detail.md` — per-policy/per-rule narrative with conditions, actions, exceptions
+- `baseline-YYYYMMDD-<tenant>-matrix.csv` — one row per rule for sorting and filtering in Excel
 
 ## Development
 
@@ -50,7 +52,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
    ```
 
 4. Authenticate when prompted (interactive MFA flow).
-5. Verify three files were written: `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, and `.md`.
+5. Verify five files were written: `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, `-overview.md`, `-detail.md`, and `-matrix.csv`.
 
 5a. Verify the meta sidecar records the correct tool version:
 
@@ -68,7 +70,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
 
    Expected: empty diff. If there's a diff, a field that should be stripped isn't — capture the diff and add the field to `$script:VolatileFields` in `src/PurviewDlpExport.psm1`, with a corresponding test in the strip-volatile-fields Describe block to lock it in.
 
-8. Open the `.md` and skim for readability. The DLP Team should be able to read it without referring to the JSON.
+8. Open the `-overview.md` for a quick scan of the estate. Open `-detail.md` to read any rule's conditions and actions in plain English. Open `-matrix.csv` in Excel to sort and filter rules across policies. The DLP Team should be able to read all three without referring to the JSON.
 
 If any step fails, do not commit a stale baseline. The output files should never be committed to this repo (see `.gitignore`); they belong with the engagement workspace.
 

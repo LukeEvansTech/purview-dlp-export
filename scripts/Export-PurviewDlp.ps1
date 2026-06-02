@@ -24,6 +24,8 @@ try {
 
     $modulePath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpExport.psd1'
     Import-Module $modulePath -Force
+    $renderPath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpRender.psm1'
+    Import-Module $renderPath -Force
 
     # Connect
     Write-Host "Connecting to Purview as $UserPrincipalName..."
@@ -52,16 +54,18 @@ try {
         -DateStamp $dateStamp `
         -RunnerUpn $UserPrincipalName
 
-    $mdOut = Export-DlpBaselineMarkdown `
-        -Normalised $normResult.Normalised `
-        -OutDir $OutDir `
-        -Tenant $Tenant `
-        -DateStamp $dateStamp
+    $view = ConvertTo-DlpView -Normalised $normResult.Normalised
+
+    $overviewOut = Export-DlpOverviewMarkdown -View $view -OutDir $OutDir -Tenant $Tenant -DateStamp $dateStamp
+    $detailOut   = Export-DlpDetailMarkdown   -View $view -OutDir $OutDir -Tenant $Tenant -DateStamp $dateStamp
+    $matrixOut   = Export-DlpMatrixCsv        -View $view -OutDir $OutDir -Tenant $Tenant -DateStamp $dateStamp
 
     Write-Host "Wrote:"
     Write-Host "  $($jsonOut.JsonPath)"
     Write-Host "  $($jsonOut.MetaPath)"
-    Write-Host "  $($mdOut.MarkdownPath)"
+    Write-Host "  $($overviewOut.OverviewPath)"
+    Write-Host "  $($detailOut.DetailPath)"
+    Write-Host "  $($matrixOut.MatrixPath)"
 }
 catch {
     Write-Error "Export failed: $($_.Exception.Message)"

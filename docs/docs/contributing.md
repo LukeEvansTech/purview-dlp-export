@@ -7,17 +7,25 @@ PRs welcome. The codebase is small — a PowerShell module, a thin entrypoint sc
 ```text
 purview-dlp-export/
   src/
-    PurviewDlpExport.psm1     # module — five exported functions
+    PurviewDlpExport.psm1     # module — four exported functions (fetch/normalise/emit JSON)
     PurviewDlpExport.psd1     # module manifest (sets ModuleVersion)
+    PurviewDlpRender.psm1     # render module — view model + three human-readable emitters
   scripts/
     Export-PurviewDlp.ps1     # entrypoint — pre-flight, connect, fetch, normalise, emit
   tests/
     Normalise.Tests.ps1       # tests for ConvertTo-NormalisedBaseline
     ExportJson.Tests.ps1      # tests for Export-DlpBaselineJson
-    ExportMarkdown.Tests.ps1  # tests for Export-DlpBaselineMarkdown
+    View.Tests.ps1            # tests for ConvertTo-DlpView
+    Overview.Tests.ps1        # tests for Export-DlpOverviewMarkdown
+    Detail.Tests.ps1          # tests for Export-DlpDetailMarkdown
+    Matrix.Tests.ps1          # tests for Export-DlpMatrixCsv
+    Entrypoint.Tests.ps1      # tests for entrypoint wiring
+    Ps51Compat.Tests.ps1      # guard: no PS 6+ -AsHashtable in .psm1 files
     fixtures/
-      raw-purview-sample.json # synthetic Purview inventory (all rule types)
-      expected.md             # locked Markdown snapshot (LF line endings)
+      raw-purview-sample.json    # synthetic Purview inventory (all rule types)
+      expected-overview.md       # locked overview Markdown snapshot (LF)
+      expected-detail.md         # locked detail Markdown snapshot (LF)
+      expected-matrix.csv        # locked CSV matrix snapshot (LF)
   examples/
     baseline-sample.md        # rendered sample for documentation
   docs/                       # this documentation site
@@ -27,51 +35,55 @@ purview-dlp-export/
 
 ```powershell
 Invoke-Pester ./tests
-# Expected: Tests Passed: 47
+# Expected: Tests Passed: 87
 ```
 
-Tests are fixture-driven and require no live Purview connection — all 47 run against synthetic inputs in `tests/fixtures/`.
+Tests are fixture-driven and require no live Purview connection — all tests run against synthetic inputs in `tests/fixtures/`.
 
 The test suite covers:
 
 - `ConvertTo-NormalisedBaseline` — idempotency, byte-stability, volatile-field stripping, sort order, orphan annotation, semantics preservation.
 - `Export-DlpBaselineJson` — file is written, meta sidecar fields are correct, UTF-8 no BOM.
-- `Export-DlpBaselineMarkdown` — snapshot match against `tests/fixtures/expected.md` (byte-for-byte, LF).
+- `ConvertTo-DlpView` — shape, policy sort order, workload/mode mapping, condition/action rendering.
+- `Export-DlpOverviewMarkdown` — file written, table contents, UTF-8 no BOM, byte-stability, snapshot match.
+- `Export-DlpDetailMarkdown` — file written, confidence/instance-count rendering, orphan reference, byte-stability, snapshot match.
+- `Export-DlpMatrixCsv` — file written, header columns, row count, byte-stability, snapshot match.
+- Entrypoint wiring — references all three new emitters, does not call retired `Export-DlpBaselineMarkdown`.
+- PS 5.1 compat guard — no `.psm1` file uses `ConvertFrom-Json -AsHashtable`.
 
-## How the Markdown snapshot fixture works
+## How the snapshot fixtures work
 
-`tests/fixtures/expected.md` is a locked snapshot. If you change `Export-DlpBaselineMarkdown` in a way that alters the rendered output, regenerate it:
+`tests/fixtures/expected-overview.md`, `expected-detail.md`, and `expected-matrix.csv` are locked snapshots. If you change an emitter in a way that alters its output, regenerate the relevant snapshot:
 
 ```powershell
 # From repo root:
 pwsh -NoProfile -Command {
     Import-Module ./src/PurviewDlpExport.psd1 -Force
-    $raw = Get-Content ./tests/fixtures/raw-purview-sample.json -Raw | ConvertFrom-Json
-    $inventory = [PSCustomObject]@{
-        Policies         = $raw.Policies
-        Rules            = $raw.Rules
-        ReferencedSits   = $raw.ReferencedSits
-        ReferencedLabels = $raw.ReferencedLabels
-    }
-    $norm = ConvertTo-NormalisedBaseline -Inventory $inventory
-    $null = Export-DlpBaselineMarkdown -Normalised $norm.Normalised -OutDir ./tests/fixtures -Tenant sample -DateStamp 20260521
-    Move-Item ./tests/fixtures/baseline-20260521-sample.md ./tests/fixtures/expected.md -Force
+    Import-Module ./src/PurviewDlpRender.psm1 -Force
+    $raw  = Get-Content ./tests/fixtures/raw-purview-sample.json -Raw | ConvertFrom-Json
+    $view = ConvertTo-DlpView -Normalised (ConvertTo-NormalisedBaseline -Inventory $raw).Normalised
+    Export-DlpOverviewMarkdown -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Export-DlpDetailMarkdown   -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Export-DlpMatrixCsv        -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-overview.md ./tests/fixtures/expected-overview.md
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-detail.md   ./tests/fixtures/expected-detail.md
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-matrix.csv  ./tests/fixtures/expected-matrix.csv
 }
 ```
 
-After regenerating, review the diff carefully — any change to the snapshot is a change to the documented output contract.
+After regenerating, review the diff carefully — any change to a snapshot is a change to the documented output contract.
 
 ## LF line-ending policy
 
-`.gitattributes` locks `tests/fixtures/expected.md` to LF line endings. The `Export-DlpBaselineMarkdown` function normalises CRLF→LF at write time (`StringBuilder.AppendLine` emits `Environment.NewLine`, which is CRLF on Windows; the renderer explicitly replaces it). This means the snapshot is byte-identical across OS.
+`.gitattributes` locks `tests/fixtures/expected-overview.md`, `expected-detail.md`, and `expected-matrix.csv` to LF line endings. All emitters normalise CRLF→LF at write time (`StringBuilder.AppendLine` emits `Environment.NewLine`, which is CRLF on Windows; the shared `Write-NoBomLf` helper in `PurviewDlpRender.psm1` replaces it). This means snapshots are byte-identical across OS.
 
-Do not change the `.gitattributes` entry for `expected.md` — doing so will cause snapshot tests to fail on Windows.
+Do not remove the `.gitattributes` entries for these fixtures — doing so will cause snapshot tests to fail on Windows.
 
 ## CI
 
 Three workflows (none require live-tenant access):
 
-- **`test.yml`** — Pester matrix on `ubuntu-latest`, `macos-latest`, `windows-latest`. All 47 tests run on every push.
+- **`test.yml`** — Pester matrix on `ubuntu-latest`, `macos-latest`, `windows-latest`. All 87 tests run on every push.
 - **`lint.yml`** — Super-Linter (PSScriptAnalyzer, yamllint, markdownlint, gitleaks, actions-lint) via `LukeEvansTech/shared-workflows`.
 - **`docs.yml`** — Builds this documentation site and deploys to GitHub Pages on pushes to `main` that touch `docs/**`.
 
@@ -81,6 +93,7 @@ Before pushing, run PSScriptAnalyzer against the module with the same settings C
 
 ```powershell
 Invoke-ScriptAnalyzer -Path ./src/PurviewDlpExport.psm1 -Settings ./.github/linters/.powershell-psscriptanalyzer.psd1
+Invoke-ScriptAnalyzer -Path ./src/PurviewDlpRender.psm1 -Settings ./.github/linters/.powershell-psscriptanalyzer.psd1
 ```
 
 Expected: no output. Any output is a lint finding that will fail `lint.yml`.

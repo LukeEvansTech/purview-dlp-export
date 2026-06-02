@@ -9,7 +9,6 @@
         'Connect-PurviewDlpSession',
         'Get-DlpInventory',
         'ConvertTo-NormalisedBaseline',
-        'Export-DlpBaselineJson',
-        'Export-DlpBaselineMarkdown'
+        'Export-DlpBaselineJson'
     )
 }
