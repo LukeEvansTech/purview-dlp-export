@@ -311,4 +311,68 @@ function Export-DlpOverviewMarkdown {
     [PSCustomObject]@{ OverviewPath = $path }
 }
 
-Export-ModuleMember -Function ConvertTo-DlpView, Export-DlpOverviewMarkdown
+function Export-DlpDetailMarkdown {
+    <#
+    .SYNOPSIS
+        Writes the deep-dive tier: per-policy scope + per-rule conditions/actions/exceptions.
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory)] $View,
+        [Parameter(Mandatory)][string] $OutDir,
+        [Parameter(Mandatory)][string] $Tenant,
+        [Parameter(Mandatory)][string] $DateStamp
+    )
+    if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine("# Purview DLP Detail - $Tenant")
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine("- Date: $DateStamp")
+    [void]$sb.AppendLine()
+
+    foreach ($p in $View.Policies) {
+        [void]$sb.AppendLine("## Policy: $($p.Name)")
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine("- Mode: $($p.Mode)")
+        [void]$sb.AppendLine("- Enabled: $($p.Enabled)")
+        [void]$sb.AppendLine("- Priority: $($p.Priority)")
+        [void]$sb.AppendLine("- Applies to: $($p.Workloads)")
+        if (@($p.Scope.Included).Count -gt 0) {
+            [void]$sb.AppendLine("- Included locations:")
+            foreach ($i in @($p.Scope.Included)) { [void]$sb.AppendLine("  - $i") }
+        }
+        if (@($p.Scope.Excluded).Count -gt 0) {
+            [void]$sb.AppendLine("- Excluded locations:")
+            foreach ($x in @($p.Scope.Excluded)) { [void]$sb.AppendLine("  - $x") }
+        }
+        if ($p.Comment) { [void]$sb.AppendLine("- Comment: $($p.Comment)") }
+        [void]$sb.AppendLine()
+
+        foreach ($r in $p.Rules) {
+            [void]$sb.AppendLine("### Rule: $($r.Name)")
+            [void]$sb.AppendLine()
+            [void]$sb.AppendLine("- Mode: $($r.Mode)")
+            [void]$sb.AppendLine("- Enabled: $($r.Enabled)")
+            [void]$sb.AppendLine("- Priority: $($r.Priority)")
+            [void]$sb.AppendLine("- Detects: $($r.DetectionSummary)")
+            [void]$sb.AppendLine("- Conditions:")
+            foreach ($c in @($r.Conditions)) { [void]$sb.AppendLine("  - $c") }
+            [void]$sb.AppendLine("- Actions:")
+            foreach ($a in @($r.Actions)) { [void]$sb.AppendLine("  - $a") }
+            if (@($r.Exceptions).Count -gt 0) {
+                [void]$sb.AppendLine("- Exceptions:")
+                foreach ($e in @($r.Exceptions)) { [void]$sb.AppendLine("  - $e") }
+            }
+            if ($r.Comment) { [void]$sb.AppendLine("- Comment: $($r.Comment)") }
+            [void]$sb.AppendLine()
+        }
+    }
+
+    $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-detail.md"
+    Write-NoBomLf -Path $path -Content $sb.ToString()
+    [PSCustomObject]@{ DetailPath = $path }
+}
+
+Export-ModuleMember -Function ConvertTo-DlpView, Export-DlpOverviewMarkdown, Export-DlpDetailMarkdown
