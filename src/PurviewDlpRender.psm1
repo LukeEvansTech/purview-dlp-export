@@ -55,14 +55,15 @@ function Format-Confidence {
 }
 
 function Get-RuleDetector {
-    # Returns plain-English condition lines for the SIT/label detectors of a rule.
+    # Returns structured detector objects for the SIT/label detectors of a rule.
+    # Each object: [PSCustomObject]@{ Kind = 'SIT'|'Label'; Name = <display name>; Detail = <"(…)" suffix or ''> }
     # Prefers the AdvancedRule JSON (carries confidence + counts); falls back to the
     # normaliser's resolved ContentContainsSensitiveInformation / HasSensitiveInformation.
     [CmdletBinding()]
-    [OutputType([string[]])]
+    [OutputType([PSCustomObject[]])]
     param([Parameter(Mandatory)] $Rule)
 
-    $lines = New-Object System.Collections.Generic.List[string]
+    $detectors = New-Object System.Collections.Generic.List[PSCustomObject]
     $hasAdvanced = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and `
         -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
 
@@ -74,17 +75,16 @@ function Get-RuleDetector {
                 if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
                 foreach ($item in $sub.Value) {
                     $name = if ($item.name) { $item.name } else { "<orphan id=$($item.id)>" }
-                    $detail = @()
+                    $detailParts = @()
                     $conf = Format-Confidence -Level $item.confidencelevel
-                    if ($conf) { $detail += $conf }
+                    if ($conf) { $detailParts += $conf }
                     $cnt = Format-InstanceCount -Min $item.mincount -Max $item.maxcount
-                    if ($cnt) { $detail += $cnt }
-                    $line = "SIT: $name"
-                    if ($detail.Count -gt 0) { $line += " ($($detail -join ', '))" }
-                    $lines.Add($line)
+                    if ($cnt) { $detailParts += $cnt }
+                    $detail = if ($detailParts.Count -gt 0) { "($($detailParts -join ', '))" } else { '' }
+                    $detectors.Add([PSCustomObject]@{ Kind = 'SIT'; Name = $name; Detail = $detail })
                 }
             }
-            if ($lines.Count -gt 0) { return $lines.ToArray() }
+            if ($detectors.Count -gt 0) { return $detectors.ToArray() }
         }
     }
 
@@ -92,7 +92,7 @@ function Get-RuleDetector {
         $null -ne $Rule.ContentContainsSensitiveInformation) {
         foreach ($sit in $Rule.ContentContainsSensitiveInformation) {
             $name = if ($sit.Name) { $sit.Name } elseif ($sit.name) { $sit.name } else { "<orphan id=$($sit.id)>" }
-            $lines.Add("SIT: $name")
+            $detectors.Add([PSCustomObject]@{ Kind = 'SIT'; Name = $name; Detail = '' })
         }
     }
     if ($Rule.PSObject.Properties.Name -contains 'HasSensitiveInformation' -and `
@@ -100,10 +100,10 @@ function Get-RuleDetector {
         foreach ($ref in $Rule.HasSensitiveInformation) {
             $kind = if ($ref.Type -eq 'label' -or $ref.type -eq 'label') { 'Label' } else { 'SIT' }
             $name = if ($ref.Name) { $ref.Name } elseif ($ref.name) { $ref.name } else { "<orphan id=$($ref.id)>" }
-            $lines.Add("${kind}: $name")
+            $detectors.Add([PSCustomObject]@{ Kind = $kind; Name = $name; Detail = '' })
         }
     }
-    $lines.ToArray()
+    $detectors.ToArray()
 }
 
 function Get-RuleConditionLine {
@@ -113,7 +113,11 @@ function Get-RuleConditionLine {
     param([Parameter(Mandatory)] $Rule)
 
     $lines = New-Object System.Collections.Generic.List[string]
-    foreach ($d in (Get-RuleDetector -Rule $Rule)) { $lines.Add($d) }
+    foreach ($d in (Get-RuleDetector -Rule $Rule)) {
+        $line = "$($d.Kind): $($d.Name)"
+        if ($d.Detail) { $line += " $($d.Detail)" }
+        $lines.Add($line)
+    }
 
     if ($Rule.PSObject.Properties.Name -contains 'ContentMatchesKeywords' -and `
         $null -ne $Rule.ContentMatchesKeywords) {
@@ -214,12 +218,7 @@ function ConvertTo-DlpView {
             Sort-Object Priority, Name | ForEach-Object {
                 $rule = $_
                 $detectors = Get-RuleDetector -Rule $rule
-                $summary = @($detectors | ForEach-Object {
-                    # strip the "SIT: "/"Label: " prefix, then strip only the appended
-                    # detail suffix "(…confidence, …instances)" — non-nested single group
-                    # so acronym parens in detector names (e.g. "(SSN)") are preserved.
-                    ($_ -replace '^(SIT|Label):\s*', '') -replace '\s*\([^()]*\)$', ''
-                }) -join ', '
+                $summary = @($detectors | ForEach-Object { $_.Name }) -join ', '
                 $ruleMode     = if ($rule.PSObject.Properties.Name -contains 'Mode')     { $rule.Mode }     else { $null }
                 $rulePriority = if ($rule.PSObject.Properties.Name -contains 'Priority') { $rule.Priority } else { $null }
                 [PSCustomObject]@{

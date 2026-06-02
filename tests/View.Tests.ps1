@@ -126,6 +126,42 @@ Describe 'regression: de-greedy DetectionSummary regex' {
     }
 }
 
+Describe 'regression: non-advanced SIT acronym preserved in DetectionSummary' {
+    It 'preserves acronym parens in non-advanced SIT name with no confidence/count suffix' {
+        # A non-advanced rule (no AdvancedRule) whose SIT name contains parens "(SSN)".
+        # With no detail suffix appended, the old regex would incorrectly strip the acronym.
+        # The new structured approach derives DetectionSummary directly from the Name field.
+        $normInput = [PSCustomObject]@{
+            Policies = @(
+                [PSCustomObject]@{
+                    Name     = 'Test Policy'
+                    Mode     = 'Enable'
+                    Enabled  = $true
+                    Priority = 0
+                    Workload = 'Exchange'
+                }
+            )
+            Rules = @(
+                [PSCustomObject]@{
+                    Name                                = 'Test Rule'
+                    ParentPolicyName                    = 'Test Policy'
+                    Mode                                = 'Enable'
+                    Priority                            = 0
+                    ContentContainsSensitiveInformation = @(
+                        [PSCustomObject]@{ name = 'U.S. Social Security Number (SSN)'; id = 'sit-ssn' }
+                    )
+                }
+            )
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+
+        $v = ConvertTo-DlpView -Normalised $normInput
+        $rule = $v.Policies[0].Rules[0]
+        $rule.DetectionSummary | Should -Be 'U.S. Social Security Number (SSN)'
+    }
+}
+
 Describe 'regression: missing optional fields do not throw' {
     It 'handles policy and rule with no Enabled/Workload/Priority/Mode without throwing' {
         # A policy with only Name and a rule with only Name + ParentPolicyName.
