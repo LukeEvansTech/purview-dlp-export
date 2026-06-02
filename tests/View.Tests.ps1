@@ -72,3 +72,91 @@ Describe 'rule action and status interpretation' {
         $r.Enabled | Should -BeFalse
     }
 }
+
+Describe 'regression: de-greedy DetectionSummary regex' {
+    It 'preserves acronym parens in SIT names (e.g. SSN)' {
+        # Build a minimal normalised baseline with one policy and one rule whose
+        # AdvancedRule carries a SIT named "U.S. Social Security Number (SSN)".
+        # The appended detail "(high confidence, 1+ instances)" must be stripped,
+        # but the acronym "(SSN)" that is part of the name must be preserved.
+        $advancedRule = @{
+            Condition = @{
+                SubConditions = @(
+                    @{
+                        ConditionName = 'ContentContainsSensitiveInformation'
+                        Value         = @(
+                            @{
+                                name            = 'U.S. Social Security Number (SSN)'
+                                confidencelevel = 'High'
+                                mincount        = '1'
+                                maxcount        = '-1'
+                            }
+                        )
+                    }
+                )
+            }
+        } | ConvertTo-Json -Depth 10
+
+        $normInput = [PSCustomObject]@{
+            Policies = @(
+                [PSCustomObject]@{
+                    Name     = 'Test Policy'
+                    Mode     = 'Enable'
+                    Enabled  = $true
+                    Priority = 0
+                    Workload = 'Exchange'
+                }
+            )
+            Rules = @(
+                [PSCustomObject]@{
+                    Name             = 'Test Rule'
+                    ParentPolicyName = 'Test Policy'
+                    Mode             = 'Enable'
+                    Priority         = 0
+                    AdvancedRule     = $advancedRule
+                }
+            )
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+
+        $v = ConvertTo-DlpView -Normalised $normInput
+        $rule = $v.Policies[0].Rules[0]
+        $rule.DetectionSummary | Should -Be 'U.S. Social Security Number (SSN)'
+    }
+}
+
+Describe 'regression: missing optional fields do not throw' {
+    It 'handles policy and rule with no Enabled/Workload/Priority/Mode without throwing' {
+        # A policy with only Name and a rule with only Name + ParentPolicyName.
+        # All optional fields (Enabled, Workload, Priority, Mode) are absent.
+        $normInput = [PSCustomObject]@{
+            Policies = @(
+                [PSCustomObject]@{
+                    Name = 'Bare Policy'
+                }
+            )
+            Rules = @(
+                [PSCustomObject]@{
+                    Name             = 'Bare Rule'
+                    ParentPolicyName = 'Bare Policy'
+                }
+            )
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+
+        { ConvertTo-DlpView -Normalised $normInput } | Should -Not -Throw
+
+        $v    = ConvertTo-DlpView -Normalised $normInput
+        $pol  = $v.Policies[0]
+        $rule = $pol.Rules[0]
+
+        # Absent Mode on policy -> '(unknown)'; absent Workload -> '(none)'
+        $pol.Mode     | Should -Be '(unknown)'
+        $pol.Workloads | Should -Be '(none)'
+
+        # Absent Mode on rule -> '(unknown)'
+        $rule.Mode | Should -Be '(unknown)'
+    }
+}

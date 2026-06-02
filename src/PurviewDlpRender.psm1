@@ -215,14 +215,18 @@ function ConvertTo-DlpView {
                 $rule = $_
                 $detectors = Get-RuleDetector -Rule $rule
                 $summary = @($detectors | ForEach-Object {
-                    # strip the "SIT: "/"Label: " prefix and any "(...)" detail for the summary
-                    ($_ -replace '^(SIT|Label):\s*', '') -replace '\s*\(.*\)$', ''
+                    # strip the "SIT: "/"Label: " prefix, then strip only the appended
+                    # detail suffix "(…confidence, …instances)" — non-nested single group
+                    # so acronym parens in detector names (e.g. "(SSN)") are preserved.
+                    ($_ -replace '^(SIT|Label):\s*', '') -replace '\s*\([^()]*\)$', ''
                 }) -join ', '
+                $ruleMode     = if ($rule.PSObject.Properties.Name -contains 'Mode')     { $rule.Mode }     else { $null }
+                $rulePriority = if ($rule.PSObject.Properties.Name -contains 'Priority') { $rule.Priority } else { $null }
                 [PSCustomObject]@{
                     Name             = $rule.Name
-                    Mode             = Format-Mode -Mode $rule.Mode
+                    Mode             = Format-Mode -Mode $ruleMode
                     Enabled          = -not ($rule.PSObject.Properties.Name -contains 'Disabled' -and $rule.Disabled)
-                    Priority         = $rule.Priority
+                    Priority         = $rulePriority
                     Comment          = if ($rule.PSObject.Properties.Name -contains 'Comment') { $rule.Comment } else { $null }
                     DetectionSummary = $summary
                     Conditions       = Get-RuleConditionLine -Rule $rule
@@ -231,14 +235,18 @@ function ConvertTo-DlpView {
                 }
             })
 
-        $scope = Get-PolicyScope -Policy $policy
+        $scope          = Get-PolicyScope -Policy $policy
+        $policyEnabled  = if ($policy.PSObject.Properties.Name -contains 'Enabled')   { [bool]$policy.Enabled }           else { $true }
+        $policyWorkload = if ($policy.PSObject.Properties.Name -contains 'Workload')  { [string]$policy.Workload }        else { '' }
+        $policyPriority = if ($policy.PSObject.Properties.Name -contains 'Priority')  { $policy.Priority }                else { $null }
+        $policyMode     = if ($policy.PSObject.Properties.Name -contains 'Mode')      { $policy.Mode }                    else { $null }
         [PSCustomObject]@{
             Name      = $policy.Name
-            Mode      = Format-Mode -Mode $policy.Mode
-            Enabled   = [bool]$policy.Enabled
-            Priority  = $policy.Priority
+            Mode      = Format-Mode -Mode $policyMode
+            Enabled   = $policyEnabled
+            Priority  = $policyPriority
             Comment   = if ($policy.PSObject.Properties.Name -contains 'Comment') { $policy.Comment } else { $null }
-            Workloads = Format-Workload -Workload ([string]$policy.Workload)
+            Workloads = Format-Workload -Workload $policyWorkload
             Scope     = $scope
             Rules     = $childRules
         }
