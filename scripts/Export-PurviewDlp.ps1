@@ -22,9 +22,12 @@ try {
         throw "OutDir does not exist: $OutDir"
     }
 
-    $modulePath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpExport.psd1'
+    # Use [IO.Path]::Combine, not 3-arg Join-Path: the third positional arg binds to
+    # -AdditionalChildPath, which is PowerShell 6+ only and throws on the WinPS 5.1 target.
+    $srcDir     = [System.IO.Path]::Combine($PSScriptRoot, '..', 'src')
+    $modulePath = [System.IO.Path]::Combine($srcDir, 'PurviewDlpExport.psd1')
     Import-Module $modulePath -Force
-    $renderPath = Join-Path $PSScriptRoot '..' 'src' 'PurviewDlpRender.psm1'
+    $renderPath = [System.IO.Path]::Combine($srcDir, 'PurviewDlpRender.psm1')
     Import-Module $renderPath -Force
 
     # Connect
