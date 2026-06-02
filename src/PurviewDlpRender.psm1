@@ -35,6 +35,14 @@ function Format-Mode {
     }
 }
 
+function Format-SingleLine {
+    # Collapse embedded CR/LF runs to a single space so free-text (comments, policy-tip
+    # custom text) can't split a CSV row or break a Markdown bullet.
+    param([AllowNull()] $Value)
+    if ($null -eq $Value) { return $null }
+    ([string]$Value) -replace '[\r\n]+', ' '
+}
+
 function Format-InstanceCount {
     # min "10", max "-1" -> "10+ instances"; min "1" max "50" -> "1-50 instances"
     [CmdletBinding()]
@@ -153,7 +161,7 @@ function Get-RuleActionLine {
         $a.Add("Notify: $($Rule.NotifyUser -join ', ')")
     }
     if ($p -contains 'NotifyPolicyTipCustomText' -and $Rule.NotifyPolicyTipCustomText) {
-        $a.Add("Policy tip: `"$($Rule.NotifyPolicyTipCustomText)`"")
+        $a.Add("Policy tip: `"$(Format-SingleLine $Rule.NotifyPolicyTipCustomText)`"")
     }
     if ($p -contains 'GenerateIncidentReport' -and $Rule.GenerateIncidentReport) {
         $a.Add("Incident report to: $($Rule.GenerateIncidentReport -join ', ')")
@@ -226,7 +234,7 @@ function ConvertTo-DlpView {
                     Mode             = Format-Mode -Mode $ruleMode
                     Enabled          = -not ($rule.PSObject.Properties.Name -contains 'Disabled' -and $rule.Disabled)
                     Priority         = $rulePriority
-                    Comment          = if ($rule.PSObject.Properties.Name -contains 'Comment') { $rule.Comment } else { $null }
+                    Comment          = if ($rule.PSObject.Properties.Name -contains 'Comment') { Format-SingleLine $rule.Comment } else { $null }
                     DetectionSummary = $summary
                     Conditions       = Get-RuleConditionLine -Rule $rule
                     Actions          = Get-RuleActionLine -Rule $rule
@@ -244,7 +252,7 @@ function ConvertTo-DlpView {
             Mode      = Format-Mode -Mode $policyMode
             Enabled   = $policyEnabled
             Priority  = $policyPriority
-            Comment   = if ($policy.PSObject.Properties.Name -contains 'Comment') { $policy.Comment } else { $null }
+            Comment   = if ($policy.PSObject.Properties.Name -contains 'Comment') { Format-SingleLine $policy.Comment } else { $null }
             Workloads = Format-Workload -Workload $policyWorkload
             Scope     = $scope
             Rules     = $childRules

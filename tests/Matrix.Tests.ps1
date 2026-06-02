@@ -41,4 +41,83 @@ Describe 'Export-DlpMatrixCsv' {
         $expected = Get-Content (Join-Path $PSScriptRoot 'fixtures' 'expected-matrix.csv') -Raw
         $actual | Should -Be $expected
     }
+    It 'writes UTF-8 without BOM' {
+        Export-DlpMatrixCsv -View $script:view -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        $bytes = [System.IO.File]::ReadAllBytes((Join-Path $script:outDir 'baseline-20260601-acme-matrix.csv'))
+        ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+    }
+}
+
+Describe 'ConvertTo-CsvField' {
+    It 'wraps a plain value in double quotes' {
+        InModuleScope PurviewDlpRender {
+            ConvertTo-CsvField 'abc' | Should -Be '"abc"'
+        }
+    }
+    It 'returns empty quoted field for null' {
+        InModuleScope PurviewDlpRender {
+            ConvertTo-CsvField $null | Should -Be '""'
+        }
+    }
+    It 'doubles embedded double-quotes' {
+        InModuleScope PurviewDlpRender {
+            ConvertTo-CsvField 'a"b' | Should -Be '"a""b"'
+        }
+    }
+    It 'keeps a comma-containing value as one quoted field' {
+        InModuleScope PurviewDlpRender {
+            ConvertTo-CsvField 'a,b' | Should -Be '"a,b"'
+        }
+    }
+}
+
+Describe 'regression: multi-line free text stays one CSV row and one Markdown line' {
+    BeforeAll {
+        $normInput = [PSCustomObject]@{
+            Policies = @(
+                [PSCustomObject]@{
+                    Name     = 'Multiline Policy'
+                    Mode     = 'Enable'
+                    Enabled  = $true
+                    Priority = 0
+                    Workload = 'Exchange'
+                    Comment  = "Policy line one`nPolicy line two"
+                }
+            )
+            Rules = @(
+                [PSCustomObject]@{
+                    Name                    = 'Multiline Rule'
+                    ParentPolicyName        = 'Multiline Policy'
+                    Mode                    = 'Enable'
+                    Priority                = 0
+                    BlockAccess             = $true
+                    NotifyPolicyTipCustomText = "First line`nSecond line"
+                    Comment                 = "Rule comment line one`nRule comment line two"
+                }
+            )
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+        $script:mlView = ConvertTo-DlpView -Normalised $normInput
+    }
+
+    It 'Actions joined string contains no newlines' {
+        $actions = ($script:mlView.Policies[0].Rules[0].Actions -join '; ')
+        $actions | Should -Not -Match '[\r\n]'
+    }
+    It 'rule Comment contains no newlines' {
+        $script:mlView.Policies[0].Rules[0].Comment | Should -Not -Match '[\r\n]'
+    }
+    It 'CSV output has exactly 2 non-empty lines (1 header + 1 data row)' {
+        $outDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pde-ml-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $outDir | Out-Null
+        try {
+            Export-DlpMatrixCsv -View $script:mlView -OutDir $outDir -Tenant 'test' -DateStamp '20260601'
+            $raw   = Get-Content (Join-Path $outDir 'baseline-20260601-test-matrix.csv') -Raw
+            $lines = $raw -split "`n" | Where-Object { $_ -ne '' }
+            $lines.Count | Should -Be 2
+        } finally {
+            Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+        }
+    }
 }
