@@ -255,4 +255,61 @@ function ConvertTo-DlpView {
     [PSCustomObject]@{ Policies = $policies }
 }
 
-Export-ModuleMember -Function ConvertTo-DlpView
+function Write-NoBomLf {
+    # Shared writer: UTF-8 no BOM, LF endings.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $lf = $Content -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($Path, $lf, $utf8NoBom)
+}
+
+function Export-DlpOverviewMarkdown {
+    <#
+    .SYNOPSIS
+        Writes the scan-tier overview: header counts + one table row per policy.
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory)] $View,
+        [Parameter(Mandatory)][string] $OutDir,
+        [Parameter(Mandatory)][string] $Tenant,
+        [Parameter(Mandatory)][string] $DateStamp
+    )
+    if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+
+    $allRules    = @($View.Policies | ForEach-Object { $_.Rules })
+    $policyCount = $View.Policies.Count
+    $ruleCount   = $allRules.Count
+    $enforceCount = @($View.Policies | Where-Object { $_.Mode -eq 'Enforce' }).Count
+    $testCount    = @($View.Policies | Where-Object { $_.Mode -like 'Test*' }).Count
+    $disabledRules = @($allRules | Where-Object { -not $_.Enabled }).Count
+
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine("# Purview DLP Overview - $Tenant")
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine("- Date: $DateStamp")
+    [void]$sb.AppendLine("- Policies: $policyCount ($enforceCount enforce, $testCount test)")
+    [void]$sb.AppendLine("- Rules: $ruleCount ($disabledRules disabled)")
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine("| Policy | Mode | Workloads | Rules | Detects | Acts | Priority |")
+    [void]$sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- |")
+
+    foreach ($p in $View.Policies) {
+        $detects = @($p.Rules | ForEach-Object { $_.DetectionSummary } |
+            Where-Object { $_ } | Select-Object -Unique) -join '; '
+        if (-not $detects) { $detects = '-' }
+        $acts = @($p.Rules | ForEach-Object { $_.Actions } |
+            ForEach-Object { ($_ -split ':')[0].Trim() } | Select-Object -Unique) -join '; '
+        if (-not $acts) { $acts = '-' }
+        $enabledNote = if ($p.Enabled) { $p.Mode } else { "$($p.Mode) (off)" }
+        [void]$sb.AppendLine("| $($p.Name) | $enabledNote | $($p.Workloads) | $($p.Rules.Count) | $detects | $acts | $($p.Priority) |")
+    }
+
+    $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-overview.md"
+    Write-NoBomLf -Path $path -Content $sb.ToString()
+    [PSCustomObject]@{ OverviewPath = $path }
+}
+
+Export-ModuleMember -Function ConvertTo-DlpView, Export-DlpOverviewMarkdown
