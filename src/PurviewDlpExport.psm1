@@ -27,6 +27,31 @@ function Compress-EnumCollision {
     $json | ConvertFrom-Json
 }
 
+function ConvertTo-OrderedTree {
+    # PS 5.1-safe replacement for the PS 6+ AsHashtable switch on ConvertFrom-Json:
+    # deep-converts a PSCustomObject/array tree into [ordered] dictionaries + arrays.
+    # Recursion depth is bounded by JSON nesting, which is shallow for DLP objects (< ~10 levels).
+    # Kept a simple (non-advanced) function on purpose: it returns heterogeneous types
+    # (ordered dictionary, array, or scalar passthrough), which an [OutputType] can't capture.
+    param($Node)
+
+    if ($Node -is [System.Management.Automation.PSCustomObject]) {
+        $o = [ordered]@{}
+        foreach ($p in $Node.PSObject.Properties) {
+            $o[$p.Name] = ConvertTo-OrderedTree -Node $p.Value
+        }
+        return $o
+    }
+    elseif ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [string]) {
+        $arr = @()
+        foreach ($item in $Node) { $arr += ,(ConvertTo-OrderedTree -Node $item) }
+        return ,$arr
+    }
+    else {
+        return $Node
+    }
+}
+
 function Format-NormalisedKey {
     # Deep alphabetical sort of all object keys in a normalised inventory. Without this, nested
     # Purview objects (inside EndpointDlpExtendedLocations etc.) keep whatever key order the cmdlet
@@ -36,8 +61,11 @@ function Format-NormalisedKey {
     [OutputType([PSCustomObject])]
     param([Parameter(Mandatory)] $Normalised)
 
+    # PS 5.1 lacks the AsHashtable switch on ConvertFrom-Json, so build an ordered-dictionary
+    # tree manually. [ordered] preserves insertion order in both 5.1 and 7, which the
+    # sort below relies on (a plain hashtable would re-randomise on re-serialisation).
     $json = $Normalised | ConvertTo-Json -Depth 20
-    $root = $json | ConvertFrom-Json -AsHashtable
+    $root = ConvertTo-OrderedTree -Node ($json | ConvertFrom-Json)
 
     $stack = New-Object System.Collections.Stack
     $stack.Push($root)
@@ -448,132 +476,8 @@ function Export-DlpBaselineJson {
     }
 }
 
-function Format-RuleCondition {
-    [CmdletBinding()]
-    [OutputType([String])]
-    param([Parameter(Mandatory)] $Rule)
-
-    $parts = @()
-
-    if ($Rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' `
-        -and $null -ne $Rule.ContentContainsSensitiveInformation) {
-        foreach ($sit in $Rule.ContentContainsSensitiveInformation) {
-            $name = if ($sit.name) { $sit.name } else { "<orphan id=$($sit.id)>" }
-            $parts += "SIT *$name*"
-        }
-    }
-
-    if ($Rule.PSObject.Properties.Name -contains 'HasSensitiveInformation' `
-        -and $null -ne $Rule.HasSensitiveInformation) {
-        foreach ($ref in $Rule.HasSensitiveInformation) {
-            $kind = if ($ref.type -eq 'label') { 'label' } else { 'SIT' }
-            $name = if ($ref.name) { $ref.name } else { "<orphan id=$($ref.id)>" }
-            $parts += "$kind *$name*"
-        }
-    }
-
-    if ($Rule.PSObject.Properties.Name -contains 'ContentMatchesKeywords' `
-        -and $null -ne $Rule.ContentMatchesKeywords) {
-        $kw = ($Rule.ContentMatchesKeywords -join ', ')
-        $parts += "keywords: $kw"
-    }
-
-    if ($parts.Count -eq 0) { '(no conditions)' } else { $parts -join ' OR ' }
-}
-
-function Format-RuleAction {
-    [CmdletBinding()]
-    [OutputType([String])]
-    param([Parameter(Mandatory)] $Rule)
-
-    $actions = @()
-    if ($Rule.PSObject.Properties.Name -contains 'BlockAccess' -and $Rule.BlockAccess) {
-        $actions += 'block'
-    }
-    if ($Rule.PSObject.Properties.Name -contains 'NotifyUser' -and $Rule.NotifyUser) {
-        $actions += "notify: $($Rule.NotifyUser -join ', ')"
-    }
-    if ($Rule.PSObject.Properties.Name -contains 'GenerateIncidentReport' -and $Rule.GenerateIncidentReport) {
-        $actions += "incident report: $($Rule.GenerateIncidentReport -join ', ')"
-    }
-    if ($actions.Count -eq 0) { '(no actions)' } else { $actions -join '; ' }
-}
-
-function Export-DlpBaselineMarkdown {
-    <#
-    .SYNOPSIS
-        Writes a human-readable Markdown summary of the normalised baseline.
-    .DESCRIPTION
-        Produces baseline-<DateStamp>-<Tenant>.md in OutDir with a per-policy and per-rule
-        narrative — conditions in plain English (resolved SIT/label names, keyword lists),
-        actions (block/notify/incident report), exception clauses. LF line endings throughout
-        for cross-OS byte-stability.
-    #>
-    [CmdletBinding()]
-    [OutputType([PSCustomObject])]
-    param(
-        [Parameter(Mandatory)] $Normalised,
-        [Parameter(Mandatory)] [string] $OutDir,
-        [Parameter(Mandatory)] [string] $Tenant,
-        [Parameter(Mandatory)] [string] $DateStamp
-    )
-
-    if (-not (Test-Path $OutDir)) {
-        throw "OutDir does not exist: $OutDir"
-    }
-
-    $sb = [System.Text.StringBuilder]::new()
-    [void]$sb.AppendLine("# Purview DLP Baseline — $Tenant")
-    [void]$sb.AppendLine()
-    [void]$sb.AppendLine("- Date: $DateStamp")
-    [void]$sb.AppendLine("- Policies: $($Normalised.Policies.Count)")
-    [void]$sb.AppendLine("- Rules: $($Normalised.Rules.Count)")
-    [void]$sb.AppendLine()
-
-    foreach ($policy in $Normalised.Policies) {
-        [void]$sb.AppendLine("## Policy: $($policy.Name)")
-        [void]$sb.AppendLine()
-        [void]$sb.AppendLine("- Mode: $($policy.Mode)")
-        [void]$sb.AppendLine("- Enabled: $($policy.Enabled)")
-        [void]$sb.AppendLine("- Workload: $($policy.Workload)")
-        [void]$sb.AppendLine("- Priority: $($policy.Priority)")
-        if ($policy.PSObject.Properties.Name -contains 'Comment' -and $policy.Comment) {
-            [void]$sb.AppendLine("- Comment: $($policy.Comment)")
-        }
-        [void]$sb.AppendLine()
-
-        $childRules = $Normalised.Rules | Where-Object { $_.ParentPolicyName -eq $policy.Name }
-        foreach ($rule in $childRules) {
-            [void]$sb.AppendLine("### Rule: $($rule.Name)")
-            [void]$sb.AppendLine()
-            [void]$sb.AppendLine("- Mode: $($rule.Mode)")
-            [void]$sb.AppendLine("- Priority: $($rule.Priority)")
-            [void]$sb.AppendLine("- Disabled: $($rule.Disabled)")
-            [void]$sb.AppendLine("- Conditions: $(Format-RuleCondition -Rule $rule)")
-            [void]$sb.AppendLine("- Actions: $(Format-RuleAction -Rule $rule)")
-            if ($rule.PSObject.Properties.Name -contains 'ExceptIfRecipientDomainIs' -and $rule.ExceptIfRecipientDomainIs) {
-                [void]$sb.AppendLine("- Except if recipient domain in: $($rule.ExceptIfRecipientDomainIs -join ', ')")
-            }
-            if ($rule.PSObject.Properties.Name -contains 'Comment' -and $rule.Comment) {
-                [void]$sb.AppendLine("- Comment: $($rule.Comment)")
-            }
-            [void]$sb.AppendLine()
-        }
-    }
-
-    $mdPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.md"
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    # Force LF line endings — StringBuilder.AppendLine uses Environment.NewLine which is CRLF on
-    # Windows, breaking cross-OS byte-stability against the LF-locked snapshot fixture.
-    $content = $sb.ToString() -replace "`r`n", "`n"
-    [System.IO.File]::WriteAllText($mdPath, $content, $utf8NoBom)
-
-    [PSCustomObject]@{ MarkdownPath = $mdPath }
-}
-
 Export-ModuleMember -Function `
     Connect-PurviewDlpSession, `
     Get-DlpInventory, `
     ConvertTo-NormalisedBaseline, `
-    Export-DlpBaselineJson, `
-    Export-DlpBaselineMarkdown
+    Export-DlpBaselineJson

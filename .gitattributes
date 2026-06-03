@@ -1,3 +1,7 @@
 # Lock the snapshot fixture to LF so it diffs cleanly across OSes
-tests/fixtures/expected.md text eol=lf
-examples/baseline-sample.md text eol=lf
+tests/fixtures/expected-overview.md text eol=lf
+tests/fixtures/expected-detail.md text eol=lf
+tests/fixtures/expected-matrix.csv text eol=lf
+examples/baseline-sample-overview.md text eol=lf
+examples/baseline-sample-detail.md text eol=lf
+examples/baseline-sample-matrix.csv text eol=lf

@@ -7,15 +7,17 @@ Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent
 
 ## What you get out
 
-For every run against a connected Purview tenant, the tool writes three files to the output directory:
+For every run against a connected Purview tenant, the tool writes five files to the output directory:
 
-| File                                   | What it is                                                                                                                                                            |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `baseline-YYYYMMDD-<tenant>.json`      | Normalised, byte-stable ruleset body. Volatile fields stripped. Re-running on an unchanged tenant produces a byte-identical file — diffs over time are the changelog. |
-| `baseline-YYYYMMDD-<tenant>.meta.json` | Audit sidecar. Varies per run: extract timestamp, runner UPN, tool version, list of stripped fields.                                                                  |
-| `baseline-YYYYMMDD-<tenant>.md`        | Human-readable per-policy/per-rule narrative. Conditions and actions in plain English. Designed to be readable by the DLP Team without opening the JSON.              |
+| File                                     | What it is                                                                                                                                                            |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `baseline-YYYYMMDD-<tenant>.json`        | Normalised, byte-stable ruleset body. Volatile fields stripped. Re-running on an unchanged tenant produces a byte-identical file — diffs over time are the changelog. |
+| `baseline-YYYYMMDD-<tenant>.meta.json`   | Audit sidecar. Varies per run: extract timestamp, runner UPN, tool version, list of stripped fields.                                                                  |
+| `baseline-YYYYMMDD-<tenant>-overview.md` | Scan tier: a header with counts plus one table row per policy — workloads, mode, rule count, what it detects.                                                         |
+| `baseline-YYYYMMDD-<tenant>-detail.md`   | Deep-dive tier: every rule in plain English — conditions with confidence and instance counts, actions, exceptions, and scope.                                         |
+| `baseline-YYYYMMDD-<tenant>-matrix.csv`  | Analysis tier: one row per rule for sorting and filtering in Excel.                                                                                                   |
 
-Full schema documented at [Output schema](output-schema.md). A rendered sample lives in [`examples/baseline-sample.md`](https://github.com/LukeEvansTech/purview-dlp-export/blob/main/examples/baseline-sample.md) in the repository.
+Full schema documented at [Output schema](output-schema.md). Rendered samples (overview, detail, and CSV) live in the [`examples/`](https://github.com/LukeEvansTech/purview-dlp-export/tree/main/examples) directory of the repository.
 
 ## Where to next
 
