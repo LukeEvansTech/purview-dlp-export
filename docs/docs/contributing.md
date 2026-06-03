@@ -27,7 +27,9 @@ purview-dlp-export/
       expected-detail.md         # locked detail Markdown snapshot (LF)
       expected-matrix.csv        # locked CSV matrix snapshot (LF)
   examples/
-    baseline-sample.md        # rendered sample for documentation
+    baseline-sample-overview.md  # rendered overview sample (from the fixture)
+    baseline-sample-detail.md    # rendered detail sample
+    baseline-sample-matrix.csv   # rendered CSV matrix sample
   docs/                       # this documentation site
 ```
 
