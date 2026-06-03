@@ -160,12 +160,12 @@ function Get-RuleConditionLine {
     }
 
     if ($Rule.PSObject.Properties.Name -contains 'ContentMatchesKeywords' -and `
-        $null -ne $Rule.ContentMatchesKeywords) {
-        $lines.Add("Keywords: $($Rule.ContentMatchesKeywords -join ', ')")
+        $null -ne $Rule.ContentMatchesKeywords -and @($Rule.ContentMatchesKeywords).Count -gt 0) {
+        $lines.Add("Keywords: $(@($Rule.ContentMatchesKeywords) -join ', ')")
     }
     if ($Rule.PSObject.Properties.Name -contains 'ContentExtensionMatchesWords' -and `
-        $null -ne $Rule.ContentExtensionMatchesWords) {
-        $lines.Add("File extensions: $($Rule.ContentExtensionMatchesWords -join ', ')")
+        $null -ne $Rule.ContentExtensionMatchesWords -and @($Rule.ContentExtensionMatchesWords).Count -gt 0) {
+        $lines.Add("File extensions: $(@($Rule.ContentExtensionMatchesWords) -join ', ')")
     }
     if ($lines.Count -eq 0) { $lines.Add('(no conditions)') }
     $lines.ToArray()
@@ -218,6 +218,22 @@ function Get-RuleExceptionLine {
     $e.ToArray()
 }
 
+function Get-LocationLabel {
+    # Friendly label for one *Location entry. Purview location values are rich objects
+    # (@{DisplayName=All; Name=All; ...}); render their DisplayName (else Name), never the raw
+    # @{...} dump. A plain string value is returned as-is. Guards access for StrictMode.
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [string]) { return $Value }
+    foreach ($k in 'DisplayName', 'Name') {
+        if ($Value.PSObject.Properties.Name -contains $k) {
+            $label = [string]$Value.$k
+            if (-not [string]::IsNullOrWhiteSpace($label)) { return $label }
+        }
+    }
+    [string]$Value
+}
+
 function Get-PolicyScope {
     # Returns @{ Included = [..]; Excluded = [..] } from any *Location/*LocationException
     # arrays present on the policy. Empty when the policy only carries the Workload string.
@@ -229,10 +245,10 @@ function Get-PolicyScope {
     $excluded = New-Object System.Collections.Generic.List[string]
     foreach ($prop in $Policy.PSObject.Properties) {
         if ($prop.Name -like '*LocationException' -and $prop.Value) {
-            foreach ($v in $prop.Value) { $excluded.Add("$($prop.Name): $v") }
+            foreach ($v in @($prop.Value)) { $excluded.Add("$($prop.Name): $(Get-LocationLabel -Value $v)") }
         }
         elseif ($prop.Name -like '*Location' -and $prop.Value) {
-            foreach ($v in $prop.Value) { $included.Add("$($prop.Name): $v") }
+            foreach ($v in @($prop.Value)) { $included.Add("$($prop.Name): $(Get-LocationLabel -Value $v)") }
         }
     }
     @{ Included = $included.ToArray(); Excluded = $excluded.ToArray() }

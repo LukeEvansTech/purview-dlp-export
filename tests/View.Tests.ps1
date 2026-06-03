@@ -239,3 +239,51 @@ Describe 'regression: advanced-rule nested Groups (label) shape does not crash' 
         $r.DetectionSummary | Should -Be 'Highly Confidential'
     }
 }
+
+Describe 'policy scope renders location objects in plain terms' {
+    BeforeAll {
+        # Real Purview *Location values are rich objects, not strings. Render their DisplayName
+        # (or Name), never the raw @{...} object dump.
+        $policy = [PSCustomObject]@{
+            Name     = 'P'
+            Mode     = 'Enable'
+            Enabled  = $true
+            Priority = 0
+            Workload = 'Exchange'
+            ExchangeLocation          = @([PSCustomObject]@{ DisplayName = 'All'; Name = 'All'; Type = 'Tenant' })
+            SharePointLocation        = @([PSCustomObject]@{ DisplayName = 'Finance Site'; Name = 'https://x.sharepoint.com/finance' })
+            ExchangeLocationException = @([PSCustomObject]@{ DisplayName = 'Execs'; Name = 'execs@x.com' })
+        }
+        $rule = [PSCustomObject]@{ Name = 'R'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0; BlockAccess = $true }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+        $script:scope = (ConvertTo-DlpView -Normalised $norm).Policies[0].Scope
+    }
+
+    It 'renders DisplayName for included locations, not the object dump' {
+        $script:scope.Included | Should -Contain 'ExchangeLocation: All'
+        $script:scope.Included | Should -Contain 'SharePointLocation: Finance Site'
+    }
+    It 'renders excluded locations the same way' {
+        $script:scope.Excluded | Should -Contain 'ExchangeLocationException: Execs'
+    }
+    It 'never emits a raw hashtable dump' {
+        (($script:scope.Included + $script:scope.Excluded) -join "`n") | Should -Not -Match '@\{'
+    }
+}
+
+Describe 'condition lines suppress empty keyword/extension fields' {
+    It 'omits an empty File extensions line' {
+        $rule = [PSCustomObject]@{
+            Name = 'R'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0
+            ContentContainsSensitiveInformation = @([PSCustomObject]@{ Name = 'Credit Card Number'; id = 'sit-cc' })
+            ContentExtensionMatchesWords = @()   # present but empty
+            ContentMatchesKeywords       = @()
+        }
+        $policy = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+        $conds = (ConvertTo-DlpView -Normalised $norm).Policies[0].Rules[0].Conditions -join "`n"
+        $conds | Should -Match 'Credit Card Number'
+        $conds | Should -Not -Match 'File extensions:'
+        $conds | Should -Not -Match 'Keywords:'
+    }
+}
