@@ -130,7 +130,7 @@ PS 7 Pester suite (existing cross-OS matrix), plus:
 
 ## Manual verification
 
-After implementation, run the README "Manual smoke test" on the **PS 5.1 target box**:
+After implementation, run the readme "Manual smoke test" on the **PS 5.1 target box**:
 confirm the export runs to completion, the five files are written
 (`json`, `meta.json`, `overview.md`, `detail.md`, `matrix.csv`), `ToolVersion` in the meta
 sidecar matches the manifest, and a second run diffs empty against the first.

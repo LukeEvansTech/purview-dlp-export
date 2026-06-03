@@ -867,7 +867,7 @@ Move-Item -Force ./tests/fixtures/baseline-20260601-acme-detail.md ./tests/fixtu
 Get-Content ./tests/fixtures/expected-detail.md
 ```
 
-Confirm: each policy has a Scope/Applies-to block; the advanced-rule shows "high confidence" / "10+ instances"; the orphan rule shows the orphan id. Then:
+Confirm: each policy has a Scope/Applies-to block; the advanced-rule shows "high confidence" / "10+ instances"; the orphan rule shows the orphan ID. Then:
 
 Run: `Invoke-Pester ./tests/Detail.Tests.ps1`
 Expected: PASS.
@@ -1154,7 +1154,7 @@ git commit -m "feat: emit layered overview/detail/CSV outputs; retire single Mar
 
 ## Manual verification (after all tasks, on the PS 5.1 target box)
 
-Run the README "Manual smoke test" on Windows PowerShell 5.1:
+Run the readme "Manual smoke test" on Windows PowerShell 5.1:
 1. Confirm the export runs to completion under `$PSVersionTable.PSVersion.Major -eq 5`.
 2. Confirm five files are written: `.json`, `.meta.json`, `-overview.md`, `-detail.md`, `-matrix.csv`.
 3. Confirm the meta sidecar `ToolVersion` matches `ModuleVersion` in the manifest.

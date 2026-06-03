@@ -7,6 +7,10 @@
         # not worth rewriting every call site. Real PS 5.1 syntax/cmdlet incompatibilities
         # are still caught by PSUseCompatibleSyntax / PSUseCompatibleCmdlets above.
         'PSAvoidUsingPositionalParameters'
+        # The entrypoint is a user-facing CLI that prints progress with Write-Host
+        # (connecting / fetching / wrote ...). Write-Host is the right tool there and has
+        # been used since 0.1.0; the modules return objects and never use it.
+        'PSAvoidUsingWriteHost'
     )
     Rules = @{
         PSUseCompatibleSyntax = @{
