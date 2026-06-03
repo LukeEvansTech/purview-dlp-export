@@ -75,10 +75,12 @@ Describe 'rule action and status interpretation' {
 
 Describe 'regression: de-greedy DetectionSummary regex' {
     It 'preserves acronym parens in SIT names (e.g. SSN)' {
-        # Build a minimal normalised baseline with one policy and one rule whose
-        # AdvancedRule carries a SIT named "U.S. Social Security Number (SSN)".
-        # The appended detail "(high confidence, 1+ instances)" must be stripped,
-        # but the acronym "(SSN)" that is part of the name must be preserved.
+        # Realistic normalised shape: the normaliser backfills an inline, resolved
+        # ContentContainsSensitiveInformation (the source of names) and preserves the raw
+        # AdvancedRule (the source of confidence/instance-count, looked up by id). The detector
+        # name "U.S. Social Security Number (SSN)" must appear verbatim in DetectionSummary
+        # (acronym preserved), while the appended "(high confidence, 1+ instances)" detail must
+        # appear only in the full Conditions line, never folded into the summary.
         $advancedRule = @{
             Condition = @{
                 SubConditions = @(
@@ -86,6 +88,7 @@ Describe 'regression: de-greedy DetectionSummary regex' {
                         ConditionName = 'ContentContainsSensitiveInformation'
                         Value         = @(
                             @{
+                                id              = 'sit-ssn'
                                 name            = 'U.S. Social Security Number (SSN)'
                                 confidencelevel = 'High'
                                 mincount        = '1'
@@ -114,6 +117,9 @@ Describe 'regression: de-greedy DetectionSummary regex' {
                     Mode             = 'Enable'
                     Priority         = 0
                     AdvancedRule     = $advancedRule
+                    ContentContainsSensitiveInformation = @(
+                        [PSCustomObject]@{ Name = 'U.S. Social Security Number (SSN)'; id = 'sit-ssn' }
+                    )
                 }
             )
             ReferencedSits   = @()
@@ -122,7 +128,10 @@ Describe 'regression: de-greedy DetectionSummary regex' {
 
         $v = ConvertTo-DlpView -Normalised $normInput
         $rule = $v.Policies[0].Rules[0]
+        # Acronym preserved, confidence detail NOT folded into the summary:
         $rule.DetectionSummary | Should -Be 'U.S. Social Security Number (SSN)'
+        # Confidence/count enriched by id and shown in the full condition line:
+        ($rule.Conditions -join "`n") | Should -Match 'U\.S\. Social Security Number \(SSN\) \(high confidence, 1\+ instances\)'
     }
 }
 
@@ -194,5 +203,39 @@ Describe 'regression: missing optional fields do not throw' {
 
         # Absent Mode on rule -> '(unknown)'
         $rule.Mode | Should -Be '(unknown)'
+    }
+}
+
+Describe 'regression: advanced-rule nested Groups (label) shape does not crash' {
+    # Mirrors the real Purview shape (codelooks "Highly Confidential" rule): a sensitivity-label
+    # condition is stored in AdvancedRule as a nested { Operator, Groups:[{ Labels:[{Name,Id,Type}] }] }
+    # item with NO top-level 'name'. The old Get-RuleDetector iterated these items and accessed
+    # $item.name, throwing under StrictMode. Names/kinds must instead come from the normaliser's
+    # resolved HasSensitiveInformation.
+    BeforeAll {
+        $advJson = '{"Version":"1.0","Condition":{"Operator":"And","SubConditions":[{"ConditionName":"ContentContainsSensitiveInformation","Value":[{"Operator":"And","Groups":[{"Name":"Default","Operator":"Or","Labels":[{"Name":"11111111-1111-1111-1111-111111111111","Id":"11111111-1111-1111-1111-111111111111","Type":"Sensitivity"}]}]}]}]}}'
+        $rule = [PSCustomObject]@{
+            Name             = 'Label Rule'
+            ParentPolicyName = 'P'
+            Mode             = 'Enable'
+            Priority         = 0
+            Disabled         = $false
+            AdvancedRule     = $advJson
+            HasSensitiveInformation = @([PSCustomObject]@{ Name = 'Highly Confidential'; id = '11111111-1111-1111-1111-111111111111'; type = 'label'; Orphan = $false })
+            BlockAccess      = $true
+        }
+        $policy = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $script:normInput = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+    }
+
+    It 'does not throw on the nested Groups shape' {
+        { ConvertTo-DlpView -Normalised $script:normInput } | Should -Not -Throw
+    }
+
+    It 'renders the resolved label name from HasSensitiveInformation' {
+        $view = ConvertTo-DlpView -Normalised $script:normInput
+        $r = $view.Policies[0].Rules[0]
+        ($r.Conditions -join "`n") | Should -Match 'Label: Highly Confidential'
+        $r.DetectionSummary | Should -Be 'Highly Confidential'
     }
 }

@@ -62,53 +62,85 @@ function Format-Confidence {
     "$($Level.ToString().ToLower()) confidence"
 }
 
+function Get-RuleDetectorDetail {
+    # Builds a guarded id -> "(confidence, instances)" lookup from a rule's raw AdvancedRule JSON.
+    # Confidence/instance-count live only on the FLAT SIT items ({id, confidencelevel, mincount,
+    # maxcount, ...}). Real rules also use a nested { Operator, Groups:[{Labels:[...]}] } shape for
+    # sensitivity-label conditions, which has no top-level id and no confidence — those items are
+    # skipped, never read for a name. Returns an empty hashtable when there is nothing usable; it is
+    # only an enrichment source, never the source of detector names.
+    param([Parameter(Mandatory)] $Rule)
+
+    $detailById = @{}
+    $hasAdvanced = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and `
+        -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
+    if (-not $hasAdvanced) { return $detailById }
+
+    try { $parsed = $Rule.AdvancedRule | ConvertFrom-Json } catch { return $detailById }
+    if ($null -eq $parsed.Condition -or $null -eq $parsed.Condition.SubConditions) { return $detailById }
+
+    foreach ($sub in $parsed.Condition.SubConditions) {
+        if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
+        if ($null -eq $sub.Value) { continue }
+        foreach ($item in $sub.Value) {
+            if ($item.PSObject.Properties.Name -notcontains 'id') { continue }  # skip Groups/label items
+            $id = $item.id
+            if (-not $id) { continue }
+            $detailParts = @()
+            if ($item.PSObject.Properties.Name -contains 'confidencelevel') {
+                $conf = Format-Confidence -Level $item.confidencelevel
+                if ($conf) { $detailParts += $conf }
+            }
+            $min = if ($item.PSObject.Properties.Name -contains 'mincount') { $item.mincount } else { $null }
+            $max = if ($item.PSObject.Properties.Name -contains 'maxcount') { $item.maxcount } else { $null }
+            $cnt = Format-InstanceCount -Min $min -Max $max
+            if ($cnt) { $detailParts += $cnt }
+            if ($detailParts.Count -gt 0) { $detailById[$id] = "($($detailParts -join ', '))" }
+        }
+    }
+    $detailById
+}
+
 function Get-RuleDetector {
     # Returns structured detector objects for the SIT/label detectors of a rule.
-    # Each object: [PSCustomObject]@{ Kind = 'SIT'|'Label'; Name = <display name>; Detail = <"(…)" suffix or ''> }
-    # Prefers the AdvancedRule JSON (carries confidence + counts); falls back to the
-    # normaliser's resolved ContentContainsSensitiveInformation / HasSensitiveInformation.
+    # Each object: [PSCustomObject]@{ Kind = 'SIT'|'Label'; Name = <display name>; Detail = <"(…)"|''> }
+    #
+    # Names/kinds come from the normaliser's RESOLVED, Groups-aware inline properties
+    # (ContentContainsSensitiveInformation = SITs, HasSensitiveInformation = labels/SITs) — these
+    # carry display names and orphan flags and exist for every rule. Confidence + instance-count
+    # live only on the raw AdvancedRule's flat SIT items, so we enrich each SIT by id from a guarded
+    # lookup. We deliberately do NOT read detector names from the raw AdvancedRule: its value items
+    # are heterogeneous (flat SITs vs nested label Groups) and the nested shape has no 'name', which
+    # previously threw under StrictMode on real tenants.
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
     param([Parameter(Mandatory)] $Rule)
 
-    $detectors = New-Object System.Collections.Generic.List[PSCustomObject]
-    $hasAdvanced = $Rule.PSObject.Properties.Name -contains 'AdvancedRule' -and `
-        -not [string]::IsNullOrEmpty($Rule.AdvancedRule)
-
-    if ($hasAdvanced) {
-        try { $parsed = $Rule.AdvancedRule | ConvertFrom-Json } catch { $parsed = $null }
-        if ($null -ne $parsed -and $null -ne $parsed.Condition -and `
-            $null -ne $parsed.Condition.SubConditions) {
-            foreach ($sub in $parsed.Condition.SubConditions) {
-                if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
-                foreach ($item in $sub.Value) {
-                    $name = if ($item.name) { $item.name } else { "<orphan id=$($item.id)>" }
-                    $detailParts = @()
-                    $conf = Format-Confidence -Level $item.confidencelevel
-                    if ($conf) { $detailParts += $conf }
-                    $cnt = Format-InstanceCount -Min $item.mincount -Max $item.maxcount
-                    if ($cnt) { $detailParts += $cnt }
-                    $detail = if ($detailParts.Count -gt 0) { "($($detailParts -join ', '))" } else { '' }
-                    $detectors.Add([PSCustomObject]@{ Kind = 'SIT'; Name = $name; Detail = $detail })
-                }
-            }
-            if ($detectors.Count -gt 0) { return $detectors.ToArray() }
-        }
-    }
+    $detectors  = New-Object System.Collections.Generic.List[PSCustomObject]
+    $detailById = Get-RuleDetectorDetail -Rule $Rule
 
     if ($Rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' -and `
         $null -ne $Rule.ContentContainsSensitiveInformation) {
         foreach ($sit in $Rule.ContentContainsSensitiveInformation) {
-            $name = if ($sit.Name) { $sit.Name } elseif ($sit.name) { $sit.name } else { "<orphan id=$($sit.id)>" }
-            $detectors.Add([PSCustomObject]@{ Kind = 'SIT'; Name = $name; Detail = '' })
+            $id   = if ($sit.PSObject.Properties.Name -contains 'id') { $sit.id } else { $null }
+            $name = $sit.Name
+            if (-not $id -and -not $name) { continue }  # skip empty placeholder items
+            if (-not $name) { $name = "<orphan id=$id>" }
+            $detail = if ($id -and $detailById.ContainsKey($id)) { $detailById[$id] } else { '' }
+            $detectors.Add([PSCustomObject]@{ Kind = 'SIT'; Name = $name; Detail = $detail })
         }
     }
     if ($Rule.PSObject.Properties.Name -contains 'HasSensitiveInformation' -and `
         $null -ne $Rule.HasSensitiveInformation) {
         foreach ($ref in $Rule.HasSensitiveInformation) {
-            $kind = if ($ref.Type -eq 'label' -or $ref.type -eq 'label') { 'Label' } else { 'SIT' }
-            $name = if ($ref.Name) { $ref.Name } elseif ($ref.name) { $ref.name } else { "<orphan id=$($ref.id)>" }
-            $detectors.Add([PSCustomObject]@{ Kind = $kind; Name = $name; Detail = '' })
+            $id   = if ($ref.PSObject.Properties.Name -contains 'id') { $ref.id } else { $null }
+            $type = if ($ref.PSObject.Properties.Name -contains 'type') { $ref.type } else { $null }
+            $name = $ref.Name
+            if (-not $id -and -not $name) { continue }
+            $kind = if ($type -eq 'label') { 'Label' } else { 'SIT' }
+            if (-not $name) { $name = "<orphan id=$id>" }
+            $detail = if ($id -and $detailById.ContainsKey($id)) { $detailById[$id] } else { '' }
+            $detectors.Add([PSCustomObject]@{ Kind = $kind; Name = $name; Detail = $detail })
         }
     }
     $detectors.ToArray()
