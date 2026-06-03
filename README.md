@@ -54,7 +54,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
 4. Authenticate when prompted (interactive MFA flow).
 5. Verify five files were written: `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, `-overview.md`, `-detail.md`, and `-matrix.csv`.
 
-5a. Verify the meta sidecar records the correct tool version:
+6. Verify the meta sidecar records the correct tool version:
 
    ```bash
    cat out-smoke/baseline-*.meta.json | grep -i ToolVersion
@@ -72,7 +72,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
 
 8. Open the `-overview.md` for a quick scan of the estate. Open `-detail.md` to read any rule's conditions and actions in plain English. Open `-matrix.csv` in Excel to sort and filter rules across policies. The DLP Team should be able to read all three without referring to the JSON.
 
-If any step fails, do not commit a stale baseline. The output files should never be committed to this repo (see `.gitignore`); they belong with the engagement workspace.
+If any step fails, do not commit a stale baseline. The output files should never be committed to this repository (see `.gitignore`); they belong with the engagement workspace.
 
 ## Read-only verification
 

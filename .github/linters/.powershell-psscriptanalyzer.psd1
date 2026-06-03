@@ -2,6 +2,11 @@
     ExcludeRules = @(
         # We intentionally write UTF-8 without BOM on all platforms.
         'PSUseBOMForUnicodeEncodedFile'
+        # Information-level style suggestion. The test suite uses positional Join-Path
+        # ($PSScriptRoot '..' 'src' ...) throughout, consistent with the existing tests;
+        # not worth rewriting every call site. Real PS 5.1 syntax/cmdlet incompatibilities
+        # are still caught by PSUseCompatibleSyntax / PSUseCompatibleCmdlets above.
+        'PSAvoidUsingPositionalParameters'
     )
     Rules = @{
         PSUseCompatibleSyntax = @{

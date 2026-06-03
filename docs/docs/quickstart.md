@@ -23,7 +23,7 @@ A practical, start-to-finish guide to running the Purview DLP export — includi
 - **Compliance Administrator or DLP Reader role** on the target tenant. Without one, `Get-DlpCompliancePolicy` returns 0 results and the tool stops with an explanatory error (see [Troubleshooting](troubleshooting.md#empty-inventory-error-0-policies-returned)).
 
 !!! note "On a locked-down box"
-    `Install-Module ... -Scope CurrentUser` installs into your profile and does **not** need admin rights. If the box blocks the PowerShell Gallery, ask whoever manages it to pre-install `ExchangeOnlineManagement` ≥ 3.0, or copy the module folder into one of your `$env:PSModulePath` directories. Nothing else needs installing — the tool is plain script files, no build step.
+`Install-Module ... -Scope CurrentUser` installs into your profile and does **not** need admin rights. If the box blocks the PowerShell Gallery, ask whoever manages it to pre-install `ExchangeOnlineManagement` ≥ 3.0, or copy the module folder into one of your `$env:PSModulePath` directories. Nothing else needs installing — the tool is plain script files, no build step.
 
 ## 2. Get the tool onto the box
 
@@ -45,11 +45,11 @@ If `git` isn't available on the box, copy the repository folder across however y
     -OutDir ./out
 ```
 
-| Parameter             | Required | What it is                                                                 |
-| --------------------- | -------- | -------------------------------------------------------------------------- |
-| `-UserPrincipalName`  | yes      | The admin account you authenticate as (MFA is prompted)                    |
-| `-Tenant`             | yes      | A short tenant label used in the output filenames (e.g. `acme`)            |
-| `-OutDir`             | no       | Where the files are written (defaults to the current directory)            |
+| Parameter            | Required | What it is                                                      |
+| -------------------- | -------- | --------------------------------------------------------------- |
+| `-UserPrincipalName` | yes      | The admin account you authenticate as (MFA is prompted)         |
+| `-Tenant`            | yes      | A short tenant label used in the output filenames (e.g. `acme`) |
+| `-OutDir`            | no       | Where the files are written (defaults to the current directory) |
 
 The script runs pre-flight checks (PowerShell version, module version, output directory), then opens the interactive sign-in — the same MFA flow as signing into the Microsoft Purview compliance portal. Complete the prompt and it fetches and writes.
 
@@ -71,13 +71,13 @@ Wrote:
 
 Five files land in `OutDir`. The three new human-readable ones are designed to be read **top-down**:
 
-| File                                           | Read it for…                                                                                  |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `…-overview.md`                                | **Start here.** One table — every policy with its workloads, mode, rule count, and what it detects. Scan the whole estate on one screen. |
-| `…-detail.md`                                  | **Then drill in.** Per policy and per rule in plain English: scope, conditions (with confidence and instance counts), actions, exceptions. This is where you understand what a rule actually *does*. |
-| `…-matrix.csv`                                 | **For analysis.** One row per rule — open in Excel to sort/filter across all policies (e.g. "show every rule that blocks", "every rule touching credit-card SITs"). |
-| `…-baseline-….json`                            | The byte-stable machine baseline (everything captured, nothing summarised). Used for diffing tenants over time. |
-| `…-baseline-….meta.json`                       | Audit sidecar — extract timestamp, who ran it, tool version, stripped-fields manifest.        |
+| File                     | Read it for…                                                                                                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `…-overview.md`          | **Start here.** One table — every policy with its workloads, mode, rule count, and what it detects. Scan the whole estate on one screen.                                                             |
+| `…-detail.md`            | **Then drill in.** Per policy and per rule in plain English: scope, conditions (with confidence and instance counts), actions, exceptions. This is where you understand what a rule actually _does_. |
+| `…-matrix.csv`           | **For analysis.** One row per rule — open in Excel to sort/filter across all policies (e.g. "show every rule that blocks", "every rule touching credit-card SITs").                                  |
+| `…-baseline-….json`      | The byte-stable machine baseline (everything captured, nothing summarised). Used for diffing tenants over time.                                                                                      |
+| `…-baseline-….meta.json` | Audit sidecar — extract timestamp, who ran it, tool version, stripped-fields manifest.                                                                                                               |
 
 Orphaned references (a rule pointing at a SIT or label that no longer exists) are shown as `<orphan id=…>` rather than hidden — those are clean-up candidates. See [Output schema](output-schema.md) for the full structure of each file.
 
@@ -96,14 +96,14 @@ Compare-Object (Get-Content ./out/first.json) (Get-Content ./out/baseline-202606
 ```
 
 !!! note "Byte-stability is per-box"
-    Re-runs are byte-identical on the **same** machine. A baseline produced on Windows PowerShell 5.1 will differ slightly from one produced on PowerShell 7 (different JSON formatting) — that's expected and doesn't affect same-box diffing.
+Re-runs are byte-identical on the **same** machine. A baseline produced on Windows PowerShell 5.1 will differ slightly from one produced on PowerShell 7 (different JSON formatting) — that's expected and doesn't affect same-box diffing.
 
 !!! note "Same-day re-runs overwrite silently"
-    Filenames carry a `YYYYMMDD` datestamp, not a time. Same-day re-runs overwrite the previous files; because the JSON body is byte-identical on unchanged tenants this is safe. Copy files aside first if you need multiple within-day captures.
+Filenames carry a `YYYYMMDD` datestamp, not a time. Same-day re-runs overwrite the previous files; because the JSON body is byte-identical on unchanged tenants this is safe. Copy files aside first if you need multiple within-day captures.
 
 ## 6. A note on safety
 
-The tool is **read-only** — it calls only `Get-*` cmdlets against Purview and never creates, changes, or deletes anything. The output files contain real tenant configuration; keep them with the engagement workspace and don't commit them to this repo (`.gitignore` already excludes `baseline-*` outputs).
+The tool is **read-only** — it calls only `Get-*` cmdlets against Purview and never creates, changes, or deletes anything. The output files contain real tenant configuration; keep them with the engagement workspace and don't commit them to this repository (`.gitignore` already excludes `baseline-*` outputs).
 
 ## Optional: run the unit tests
 

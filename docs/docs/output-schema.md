@@ -166,17 +166,17 @@ One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
 
 ### Columns
 
-| Column       | What it contains                                                                        |
-| ------------ | --------------------------------------------------------------------------------------- |
-| `Policy`     | Parent policy name                                                                      |
-| `Rule`       | Rule name                                                                               |
-| `Workloads`  | Friendly workload string from the parent policy                                         |
-| `Enabled`    | `True` or `False`                                                                       |
-| `Mode`       | Friendly mode string (`Enforce`, `Test (notify)`, `Test (silent)`, `Disabled`)          |
-| `Priority`   | Rule priority integer                                                                   |
-| `Detects`    | One-line detection summary (SIT/label names, comma-separated)                           |
-| `Conditions` | Full condition list (semicolon-separated, matches the detail Markdown bullet list)      |
-| `Actions`    | Full action list (semicolon-separated)                                                  |
-| `Exceptions` | Exception clauses (semicolon-separated), empty string if none                           |
+| Column       | What it contains                                                                   |
+| ------------ | ---------------------------------------------------------------------------------- |
+| `Policy`     | Parent policy name                                                                 |
+| `Rule`       | Rule name                                                                          |
+| `Workloads`  | Friendly workload string from the parent policy                                    |
+| `Enabled`    | `True` or `False`                                                                  |
+| `Mode`       | Friendly mode string (`Enforce`, `Test (notify)`, `Test (silent)`, `Disabled`)     |
+| `Priority`   | Rule priority integer                                                              |
+| `Detects`    | One-line detection summary (SIT/label names, comma-separated)                      |
+| `Conditions` | Full condition list (semicolon-separated, matches the detail Markdown bullet list) |
+| `Actions`    | Full action list (semicolon-separated)                                             |
+| `Exceptions` | Exception clauses (semicolon-separated), empty string if none                      |
 
 All data fields are RFC-4180 quoted so commas and semicolons inside values never split a row. The header row is unquoted. Line endings are LF throughout.
