@@ -32,4 +32,5 @@ Initial release.
 - 47 Pester tests covering the pure pipeline against synthetic and realistic-shape fixtures.
 - CI: Pester matrix across `ubuntu-latest`, `macos-latest`, `windows-latest`; super-linter via `LukeEvansTech/shared-workflows`.
 
+[Unreleased]: https://github.com/LukeEvansTech/purview-dlp-export/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/LukeEvansTech/purview-dlp-export/releases/tag/v0.1.0
