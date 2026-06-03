@@ -287,3 +287,34 @@ Describe 'condition lines suppress empty keyword/extension fields' {
         $conds | Should -Not -Match 'Keywords:'
     }
 }
+
+Describe 'rule actions cover endpoint restrictions and alerts' {
+    It 'renders one line per EndpointDlpRestriction and never reports (no actions)' {
+        $rule = [PSCustomObject]@{
+            Name = 'R'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0
+            EndpointDlpRestrictions = @(
+                [PSCustomObject]@{ setting = 'Print';     value = 'Warn' },
+                [PSCustomObject]@{ setting = 'CopyPaste'; value = 'Block' }
+            )
+            GenerateAlert = @('true')
+        }
+        $policy = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Endpoint' }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+        $joined = ((ConvertTo-DlpView -Normalised $norm).Policies[0].Rules[0].Actions) -join "`n"
+        $joined | Should -Match 'Endpoint restriction: Print = Warn'
+        $joined | Should -Match 'Endpoint restriction: CopyPaste = Block'
+        $joined | Should -Match 'Generate alert'
+        $joined | Should -Not -Match '\(no actions\)'
+    }
+    It 'renders alert recipients when GenerateAlert carries addresses' {
+        $rule = [PSCustomObject]@{
+            Name = 'R'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0
+            GenerateAlert = @('a@b.com', 'c@d.com')
+        }
+        $policy = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Endpoint' }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+        $joined = ((ConvertTo-DlpView -Normalised $norm).Policies[0].Rules[0].Actions) -join "`n"
+        $joined | Should -Match 'Alert to: a@b\.com, c@d\.com'
+        $joined | Should -Not -Match 'Generate alert'
+    }
+}

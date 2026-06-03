@@ -189,11 +189,35 @@ function Get-RuleActionLine {
         }
     }
     if ($p -contains 'Encrypt' -and $Rule.Encrypt) { $a.Add('Encrypt (RMS)') }
+    # Endpoint DLP enforcement — one line per { setting, value } restriction (Print=Warn, etc.).
+    if ($p -contains 'EndpointDlpRestrictions' -and $Rule.EndpointDlpRestrictions) {
+        foreach ($r in @($Rule.EndpointDlpRestrictions)) {
+            $setting = if ($r.PSObject.Properties.Name -contains 'setting') { $r.setting } else { $null }
+            $value   = if ($r.PSObject.Properties.Name -contains 'value')   { $r.value }   else { $null }
+            if ($setting) {
+                $line = "Endpoint restriction: $setting"
+                if ($value) { $line += " = $value" }
+                $a.Add($line)
+            }
+        }
+    }
     if ($p -contains 'NotifyUser' -and $Rule.NotifyUser) {
         $a.Add("Notify: $($Rule.NotifyUser -join ', ')")
     }
     if ($p -contains 'NotifyPolicyTipCustomText' -and $Rule.NotifyPolicyTipCustomText) {
         $a.Add("Policy tip: `"$(Format-SingleLine $Rule.NotifyPolicyTipCustomText)`"")
+    }
+    # GenerateAlert is either a flag (['true']) or a list of recipient addresses.
+    if ($p -contains 'GenerateAlert' -and $Rule.GenerateAlert) {
+        $recipients = @($Rule.GenerateAlert | Where-Object {
+            $t = "$_"; $t -and $t.ToLower() -ne 'true' -and $t.ToLower() -ne 'false'
+        })
+        if ($recipients.Count -gt 0) {
+            $a.Add("Alert to: $($recipients -join ', ')")
+        }
+        elseif (@($Rule.GenerateAlert | Where-Object { "$_".ToLower() -eq 'true' }).Count -gt 0) {
+            $a.Add('Generate alert')
+        }
     }
     if ($p -contains 'GenerateIncidentReport' -and $Rule.GenerateIncidentReport) {
         $a.Add("Incident report to: $($Rule.GenerateIncidentReport -join ', ')")
