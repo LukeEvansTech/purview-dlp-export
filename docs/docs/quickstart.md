@@ -38,20 +38,19 @@ If `git` isn't available on the box, copy the repository folder across however y
 
 ## 3. Run it
 
+Only `-UserPrincipalName` is required:
+
 ```powershell
-./scripts/Export-PurviewDlp.ps1 `
-    -UserPrincipalName admin@yourtenant.onmicrosoft.com `
-    -Tenant yourtenant `
-    -OutDir ./out
+./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@yourtenant.onmicrosoft.com
 ```
 
-| Parameter            | Required | What it is                                                      |
-| -------------------- | -------- | --------------------------------------------------------------- |
-| `-UserPrincipalName` | yes      | The admin account you authenticate as (MFA is prompted)         |
-| `-Tenant`            | yes      | A short tenant label used in the output filenames (e.g. `acme`) |
-| `-OutDir`            | no       | Where the files are written (defaults to the current directory) |
+| Parameter            | Required | What it is                                                                                                                               |
+| -------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `-UserPrincipalName` | yes      | The admin account you authenticate as (MFA is prompted)                                                                                  |
+| `-Tenant`            | no       | Short label used in the output filenames. Inferred from the UPN domain if omitted (e.g. `admin@codelooks.onmicrosoft.com` → `codelooks`) |
+| `-OutDir`            | no       | Where the files are written. Created if it doesn't exist; defaults to the current directory                                              |
 
-The script runs pre-flight checks (PowerShell version, module version, output directory), then opens the interactive sign-in — the same MFA flow as signing into the Microsoft Purview compliance portal. Complete the prompt and it fetches and writes.
+The script runs pre-flight checks (PowerShell version, module version), creates the output directory if needed, and infers the tenant label from the UPN when `-Tenant` is not given. It then opens the interactive sign-in — the same MFA flow as signing into the Microsoft Purview compliance portal. Complete the prompt and it fetches and writes.
 
 Sample output after a successful run:
 
@@ -111,5 +110,5 @@ Only needed if you're changing the code; no live tenant required. Requires `Pest
 
 ```powershell
 Invoke-Pester ./tests
-# Expected: Tests Passed: 87
+# Expected: Tests Passed: 101
 ```
