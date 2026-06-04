@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $UserPrincipalName,
-    [Parameter(Mandatory)] [string] $Tenant,
+    # Optional: a short label used only in output filenames. When omitted it is inferred
+    # from the UPN domain (e.g. admin@codelooks.onmicrosoft.com -> codelooks).
+    [string] $Tenant,
     [string] $OutDir = (Get-Location).Path
 )
 
@@ -19,7 +21,8 @@ try {
         throw "ExchangeOnlineManagement >= 3.0 required. Install: Install-Module ExchangeOnlineManagement -MinimumVersion 3.0 -Scope CurrentUser"
     }
     if (-not (Test-Path $OutDir)) {
-        throw "OutDir does not exist: $OutDir"
+        New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+        Write-Host "Created output directory: $OutDir"
     }
 
     # Use [IO.Path]::Combine, not 3-arg Join-Path: the third positional arg binds to
@@ -29,6 +32,15 @@ try {
     Import-Module $modulePath -Force
     $renderPath = [System.IO.Path]::Combine($srcDir, 'PurviewDlpRender.psm1')
     Import-Module $renderPath -Force
+
+    # Infer the tenant label from the UPN domain when not supplied explicitly.
+    if ([string]::IsNullOrWhiteSpace($Tenant)) {
+        $Tenant = Get-TenantNameFromUpn -UserPrincipalName $UserPrincipalName
+        if ([string]::IsNullOrWhiteSpace($Tenant)) {
+            throw "Could not infer a tenant name from '$UserPrincipalName'. Pass -Tenant explicitly."
+        }
+        Write-Host "Tenant (inferred from UPN): $Tenant"
+    }
 
     # Connect
     Write-Host "Connecting to Purview as $UserPrincipalName..."

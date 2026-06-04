@@ -192,6 +192,25 @@ function Resolve-AdvancedRuleReference {
     [PSCustomObject]$copy
 }
 
+function Get-TenantNameFromUpn {
+    <#
+    .SYNOPSIS
+        Derives a short tenant label from a user principal name's domain.
+    .DESCRIPTION
+        Used when the entrypoint is invoked without an explicit -Tenant. For a UPN of the
+        form <name>@<tenant>.onmicrosoft.com it returns <tenant>; for a custom (vanity)
+        domain it returns the first DNS label. The label is only used in output filenames.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)] [string] $UserPrincipalName)
+
+    $domain = ($UserPrincipalName -split '@')[-1]
+    if ([string]::IsNullOrWhiteSpace($domain)) { return '' }
+    if ($domain -match '(?i)^(.+?)\.onmicrosoft\.com$') { return $Matches[1] }
+    ($domain -split '\.')[0]
+}
+
 function Connect-PurviewDlpSession {
     <#
     .SYNOPSIS
@@ -477,6 +496,7 @@ function Export-DlpBaselineJson {
 }
 
 Export-ModuleMember -Function `
+    Get-TenantNameFromUpn, `
     Connect-PurviewDlpSession, `
     Get-DlpInventory, `
     ConvertTo-NormalisedBaseline, `

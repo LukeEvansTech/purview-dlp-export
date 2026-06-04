@@ -13,8 +13,10 @@ Captures policies, rules, and the names of any sensitivity labels and Sensitive 
 ## Usage
 
 ```powershell
-./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@tenant.onmicrosoft.com -Tenant acme -OutDir ./out
+./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@tenant.onmicrosoft.com -OutDir ./out
 ```
+
+Only `-UserPrincipalName` is required. `-Tenant` is inferred from the UPN domain when omitted (e.g. `admin@acme.onmicrosoft.com` → `acme`), and `-OutDir` is created if it doesn't exist (defaults to the current directory).
 
 Produces in `./out/`:
 

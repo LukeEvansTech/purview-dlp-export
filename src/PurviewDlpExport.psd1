@@ -6,6 +6,7 @@
     Description       = 'Read-only Purview DLP ruleset baseline export.'
     PowerShellVersion = '5.1'
     FunctionsToExport = @(
+        'Get-TenantNameFromUpn',
         'Connect-PurviewDlpSession',
         'Get-DlpInventory',
         'ConvertTo-NormalisedBaseline',
