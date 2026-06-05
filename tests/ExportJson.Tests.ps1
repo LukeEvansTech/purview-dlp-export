@@ -87,4 +87,24 @@ Describe 'Export-DlpBaselineJson' {
         $meta.StrippedFields | Sort-Object | Should -Be ($script:normalised.StrippedFields | Sort-Object)
         $meta.ExtractTimestampUtc | Should -Not -BeNullOrEmpty
     }
+
+    It 'writes into OutDir when given a relative path (.NET CWD differs from PowerShell location)' {
+        # Reproduces the WinPS 5.1 failure: New-Item/Test-Path use PowerShell's location, but
+        # [System.IO.File]::WriteAllText resolves a relative path against the .NET process
+        # directory. The emitter must resolve OutDir to absolute so the write lands correctly.
+        Push-Location $script:outDir
+        try {
+            $out = Export-DlpBaselineJson `
+                -Normalised $script:normalised.Normalised `
+                -OutDir '.' `
+                -Tenant 'acme' `
+                -StrippedFields $script:normalised.StrippedFields `
+                -DateStamp '20260521' `
+                -RunnerUpn 'admin@acme.onmicrosoft.com'
+            [System.IO.Path]::IsPathRooted($out.JsonPath) | Should -BeTrue
+            Test-Path (Join-Path $script:outDir 'baseline-20260521-acme.json') | Should -BeTrue
+        } finally {
+            Pop-Location
+        }
+    }
 }

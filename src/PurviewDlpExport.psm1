@@ -471,6 +471,9 @@ function Export-DlpBaselineJson {
     if (-not (Test-Path $OutDir)) {
         throw "OutDir does not exist: $OutDir"
     }
+    # Resolve to absolute: [System.IO.File]::WriteAllText resolves a relative path against the
+    # .NET process directory (often the user profile), NOT PowerShell's current location.
+    $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 
     $jsonPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.json"
     $metaPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.meta.json"

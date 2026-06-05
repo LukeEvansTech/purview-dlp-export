@@ -357,6 +357,9 @@ function Export-DlpOverviewMarkdown {
         [Parameter(Mandatory)][string] $DateStamp
     )
     if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+    # Resolve to absolute: [System.IO.File]::WriteAllText resolves a relative path against the
+    # .NET process directory (often the user profile), NOT PowerShell's current location.
+    $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 
     $allRules    = @($View.Policies | ForEach-Object { $_.Rules })
     $policyCount = @($View.Policies).Count
@@ -405,6 +408,9 @@ function Export-DlpDetailMarkdown {
         [Parameter(Mandatory)][string] $DateStamp
     )
     if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+    # Resolve to absolute: [System.IO.File]::WriteAllText resolves a relative path against the
+    # .NET process directory (often the user profile), NOT PowerShell's current location.
+    $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 
     $sb = [System.Text.StringBuilder]::new()
     [void]$sb.AppendLine("# Purview DLP Detail - $Tenant")
@@ -480,6 +486,9 @@ function Export-DlpMatrixCsv {
         [Parameter(Mandatory)][string] $DateStamp
     )
     if (-not (Test-Path $OutDir)) { throw "OutDir does not exist: $OutDir" }
+    # Resolve to absolute: [System.IO.File]::WriteAllText resolves a relative path against the
+    # .NET process directory (often the user profile), NOT PowerShell's current location.
+    $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 
     $sb = [System.Text.StringBuilder]::new()
     [void]$sb.Append("Policy,Rule,Workloads,Enabled,Mode,Priority,Detects,Conditions,Actions,Exceptions`n")
