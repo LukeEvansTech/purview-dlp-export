@@ -66,7 +66,7 @@ function Get-RuleDetectorDetail {
     # Builds a guarded id -> "(confidence, instances)" lookup from a rule's raw AdvancedRule JSON.
     # Confidence/instance-count live only on the FLAT SIT items ({id, confidencelevel, mincount,
     # maxcount, ...}). Real rules also use a nested { Operator, Groups:[{Labels:[...]}] } shape for
-    # sensitivity-label conditions, which has no top-level id and no confidence — those items are
+    # sensitivity-label conditions, which has no top-level id and no confidence - those items are
     # skipped, never read for a name. Returns an empty hashtable when there is nothing usable; it is
     # only an enrichment source, never the source of detector names.
     param([Parameter(Mandatory)] $Rule)
@@ -103,10 +103,10 @@ function Get-RuleDetectorDetail {
 
 function Get-RuleDetector {
     # Returns structured detector objects for the SIT/label detectors of a rule.
-    # Each object: [PSCustomObject]@{ Kind = 'SIT'|'Label'; Name = <display name>; Detail = <"(…)"|''> }
+    # Each object: [PSCustomObject]@{ Kind = 'SIT'|'Label'; Name = <display name>; Detail = <"(...)"|''> }
     #
     # Names/kinds come from the normaliser's RESOLVED, Groups-aware inline properties
-    # (ContentContainsSensitiveInformation = SITs, HasSensitiveInformation = labels/SITs) — these
+    # (ContentContainsSensitiveInformation = SITs, HasSensitiveInformation = labels/SITs) - these
     # carry display names and orphan flags and exist for every rule. Confidence + instance-count
     # live only on the raw AdvancedRule's flat SIT items, so we enrich each SIT by id from a guarded
     # lookup. We deliberately do NOT read detector names from the raw AdvancedRule: its value items
@@ -189,7 +189,7 @@ function Get-RuleActionLine {
         }
     }
     if ($p -contains 'Encrypt' -and $Rule.Encrypt) { $a.Add('Encrypt (RMS)') }
-    # Endpoint DLP enforcement — one line per { setting, value } restriction (Print=Warn, etc.).
+    # Endpoint DLP enforcement - one line per { setting, value } restriction (Print=Warn, etc.).
     if ($p -contains 'EndpointDlpRestrictions' -and $Rule.EndpointDlpRestrictions) {
         foreach ($r in @($Rule.EndpointDlpRestrictions)) {
             $setting = if ($r.PSObject.Properties.Name -contains 'setting') { $r.setting } else { $null }
