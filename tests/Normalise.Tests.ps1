@@ -295,7 +295,7 @@ Describe 'ConvertTo-NormalisedBaseline flattens enum collisions' {
         # production guarantee (JSON output is parseable) against the fixture inventory, and verify
         # the Expand-EnumCollisions helper behaviour via the module's internal Apply-EnumFlatten
         # logic by constructing a synthetic inventory whose rules include an ordered hashtable
-        # carrying both 'value' and 'Value' keys — the shape ConvertFrom-Json -AsHashTable returns
+        # carrying both 'value' and 'Value' keys - the shape ConvertFrom-Json -AsHashTable returns
         # for collision JSON.  ConvertTo-NormalisedBaseline converts hashtables to PSCustomObject
         # before returning, so the collision must be resolved before serialisation.
         $script:collisionResult = ConvertTo-NormalisedBaseline -Inventory $script:rawInventory

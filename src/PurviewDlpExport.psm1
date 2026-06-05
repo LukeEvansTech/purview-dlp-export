@@ -56,7 +56,7 @@ function Format-NormalisedKey {
     # Deep alphabetical sort of all object keys in a normalised inventory. Without this, nested
     # Purview objects (inside EndpointDlpExtendedLocations etc.) keep whatever key order the cmdlet
     # produces, which varies between calls and breaks byte-stability. Uses an iterative DFS with
-    # an explicit stack — recursion would overflow on deep Purview structures.
+    # an explicit stack - recursion would overflow on deep Purview structures.
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param([Parameter(Mandatory)] $Normalised)
@@ -254,23 +254,23 @@ function Get-DlpInventory {
     $rules    = @(Get-DlpComplianceRule   -ErrorAction Stop)
 
     if ($policies.Count -eq 0) {
-        throw "0 policies returned — check your account has Compliance Administrator or DLP Reader role on this tenant."
+        throw "0 policies returned - check your account has Compliance Administrator or DLP Reader role on this tenant."
     }
     if ($rules.Count -eq 0) {
-        throw "0 rules returned — policies exist but no rules. Verify account permissions."
+        throw "0 rules returned - policies exist but no rules. Verify account permissions."
     }
 
     $sitIds   = New-Object System.Collections.Generic.HashSet[string]
     $labelIds = New-Object System.Collections.Generic.HashSet[string]
 
     foreach ($rule in $rules) {
-        # Expand AdvancedRule first — for advanced rules, inline ContentContainsSensitiveInformation
+        # Expand AdvancedRule first - for advanced rules, inline ContentContainsSensitiveInformation
         # has null properties; the real SIT/label refs are inside the AdvancedRule JSON string.
         $expanded = Expand-AdvancedRuleReference -Rule $rule
         foreach ($s in $expanded.Sits)   { if ($s.Id) { [void]$sitIds.Add($s.Id) } }
         foreach ($l in $expanded.Labels) { if ($l.Id) { [void]$labelIds.Add($l.Id) } }
 
-        # Inline walk — still correct for non-advanced rules.
+        # Inline walk - still correct for non-advanced rules.
         if ($rule.PSObject.Properties.Name -contains 'ContentContainsSensitiveInformation' `
             -and $null -ne $rule.ContentContainsSensitiveInformation) {
             foreach ($s in $rule.ContentContainsSensitiveInformation) {
@@ -318,7 +318,7 @@ function Get-DlpInventory {
 }
 
 function Skip-VolatileField {
-    # Pure function — returns a new PSCustomObject without the specified fields.
+    # Pure function - returns a new PSCustomObject without the specified fields.
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
@@ -398,7 +398,7 @@ function ConvertTo-NormalisedBaseline {
         Strips volatile fields (timestamps, ETags, RunspaceIds), backfills SIT/label names from
         AdvancedRule references, annotates orphan references, flattens Purview enum-collision
         objects, and deep-sorts all object keys alphabetically. The output is suitable for
-        diffing across runs — re-running on an unchanged tenant produces a byte-identical body.
+        diffing across runs - re-running on an unchanged tenant produces a byte-identical body.
     .PARAMETER Inventory
         The raw inventory object returned by Get-DlpInventory.
     #>
