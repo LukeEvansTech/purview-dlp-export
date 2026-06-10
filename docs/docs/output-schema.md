@@ -106,7 +106,7 @@ Example:
     "ObjectVersion",
     "ImmutableId"
   ],
-  "ToolVersion": "0.1.0"
+  "ToolVersion": "0.2.0"
 }
 ```
 
@@ -168,7 +168,7 @@ One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
 
 | Column       | What it contains                                                                   |
 | ------------ | ---------------------------------------------------------------------------------- |
-| `Policy`     | Parent policy name                                                                 |
+| `Policy`     | Parent policy name; `<unattached: name>` if the named parent policy is not in the export |
 | `Rule`       | Rule name                                                                          |
 | `Workloads`  | Friendly workload string from the parent policy                                    |
 | `Enabled`    | `True` or `False`                                                                  |
@@ -180,3 +180,5 @@ One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
 | `Exceptions` | Exception clauses (semicolon-separated), empty string if none                      |
 
 All data fields are RFC-4180 quoted so commas and semicolons inside values never split a row. The header row is unquoted. Line endings are LF throughout.
+
+The file is UTF-8 **without** a BOM (all five outputs are, to keep re-runs byte-comparable). One consequence: when tenant data contains non-ASCII characters (e.g. accented policy names), Excel's double-click open may mis-decode them — import via *Data → From Text/CSV* and pick UTF-8 instead.

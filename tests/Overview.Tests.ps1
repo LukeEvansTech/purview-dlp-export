@@ -42,3 +42,24 @@ Describe 'Export-DlpOverviewMarkdown' {
         $actual | Should -Be $expected
     }
 }
+
+Describe 'Export-DlpOverviewMarkdown surfaces unattached rules' {
+    BeforeEach {
+        $script:outDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pde-ov-ua-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:outDir | Out-Null
+
+        $policy     = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $attached   = [PSCustomObject]@{ Name = 'R1'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0 }
+        $unattached = [PSCustomObject]@{ Name = 'Ghost Rule'; ParentPolicyName = 'Deleted Policy'; Mode = 'Enable'; Priority = 0 }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($attached, $unattached); ReferencedSits = @(); ReferencedLabels = @() }
+        $script:ghostView = ConvertTo-DlpView -Normalised $norm
+    }
+    AfterEach { Remove-Item -Recurse -Force $script:outDir -ErrorAction SilentlyContinue }
+
+    It 'counts unattached rules in the rule total and adds a warning line' {
+        Export-DlpOverviewMarkdown -View $script:ghostView -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        $c = Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-overview.md') -Raw
+        $c | Should -Match '- Rules: 2 '
+        $c | Should -Match 'Unattached rules: 1'
+    }
+}

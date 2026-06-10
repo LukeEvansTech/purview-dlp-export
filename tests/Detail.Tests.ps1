@@ -47,3 +47,31 @@ Describe 'Export-DlpDetailMarkdown' {
         $actual | Should -Be $expected
     }
 }
+
+Describe 'Export-DlpDetailMarkdown surfaces unattached rules' {
+    BeforeEach {
+        $script:outDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pde-dt-ua-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:outDir | Out-Null
+
+        $policy     = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $unattached = [PSCustomObject]@{ Name = 'Ghost Rule'; ParentPolicyName = 'Deleted Policy'; Mode = 'Enable'; Priority = 0; BlockAccess = $true }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($unattached); ReferencedSits = @(); ReferencedLabels = @() }
+        $script:ghostView = ConvertTo-DlpView -Normalised $norm
+    }
+    AfterEach { Remove-Item -Recurse -Force $script:outDir -ErrorAction SilentlyContinue }
+
+    It 'renders an unattached-rules section with the rule and its missing parent' {
+        Export-DlpDetailMarkdown -View $script:ghostView -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        $c = Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-detail.md') -Raw
+        $c | Should -Match '## Unattached rules'
+        $c | Should -Match '### Rule: Ghost Rule'
+        $c | Should -Match 'Parent policy: Deleted Policy'
+        $c | Should -Match 'Block access'
+    }
+
+    It 'omits the unattached-rules section when there are none' {
+        Export-DlpDetailMarkdown -View $script:view -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        (Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-detail.md') -Raw) |
+            Should -Not -Match 'Unattached rules'
+    }
+}

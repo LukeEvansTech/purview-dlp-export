@@ -88,6 +88,34 @@ Describe 'Export-DlpBaselineJson' {
         $meta.ExtractTimestampUtc | Should -Not -BeNullOrEmpty
     }
 
+    It 'writes the JSON and meta sidecar with LF line endings (no CR bytes)' {
+        # On Windows PowerShell, ConvertTo-Json emits CRLF between tokens; the writer must
+        # normalise to LF so all five outputs share line endings (and the cross-OS CI matrix
+        # compares like-for-like). On Unix this is a no-op.
+        Export-DlpBaselineJson `
+            -Normalised $script:normalised.Normalised `
+            -OutDir $script:outDir `
+            -Tenant 'acme' `
+            -StrippedFields $script:normalised.StrippedFields `
+            -DateStamp '20260521' `
+            -RunnerUpn 'admin@acme.onmicrosoft.com'
+
+        foreach ($name in 'baseline-20260521-acme.json', 'baseline-20260521-acme.meta.json') {
+            $bytes = [System.IO.File]::ReadAllBytes((Join-Path $script:outDir $name))
+            @($bytes | Where-Object { $_ -eq 0x0D }).Count | Should -Be 0 -Because "$name should contain no CR bytes"
+        }
+    }
+
+    It 'normalises CRLF content to LF via the module writer helper' {
+        $path = Join-Path $script:outDir 'crlf-probe.txt'
+        InModuleScope PurviewDlpExport -Parameters @{ Path = $path } {
+            Write-NoBomLf -Path $Path -Content "line1`r`nline2`r`n"
+        }
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        @($bytes | Where-Object { $_ -eq 0x0D }).Count | Should -Be 0
+        ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+    }
+
     It 'writes into OutDir when given a relative path (.NET CWD differs from PowerShell location)' {
         # Reproduces the WinPS 5.1 failure: New-Item/Test-Path use PowerShell's location, but
         # [System.IO.File]::WriteAllText resolves a relative path against the .NET process

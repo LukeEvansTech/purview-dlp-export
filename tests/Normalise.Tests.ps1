@@ -286,6 +286,63 @@ Describe 'ConvertTo-NormalisedBaseline expands advanced rules' {
     }
 }
 
+Describe 'ConvertTo-NormalisedBaseline tolerates malformed AdvancedRule shapes' {
+    # The render module learned on real tenants that AdvancedRule value items are heterogeneous
+    # and must be read with guarded access under StrictMode. The normaliser walks the same JSON
+    # in Expand-AdvancedRuleReference, so unexpected shapes must not crash it either.
+    BeforeAll {
+        $advJson = '{"Condition":{"SubConditions":[{"ConditionName":"ContentContainsSensitiveInformation","Value":[' +
+            '{"confidencelevel":"High"},' +
+            '{"Operator":"And","Groups":[{"Operator":"Or","Labels":[{"Id":"lab-1"}]}]}' +
+            ']}]}}'
+        $rule = [PSCustomObject]@{
+            Name             = 'Odd Shapes Rule'
+            ParentPolicyName = 'P'
+            AdvancedRule     = $advJson
+        }
+        $script:oddInv = [PSCustomObject]@{
+            Policies         = @([PSCustomObject]@{ Name = 'P' })
+            Rules            = @($rule)
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+    }
+
+    It 'does not throw on a flat item with no id and a Groups label with no Name/Type' {
+        { ConvertTo-NormalisedBaseline -Inventory $script:oddInv } | Should -Not -Throw
+    }
+
+    It 'still captures the id-bearing reference and skips the id-less item' {
+        $result = ConvertTo-NormalisedBaseline -Inventory $script:oddInv
+        $r = $result.Normalised.Rules | Where-Object { $_.Name -eq 'Odd Shapes Rule' }
+        $ids = @($r.ContentContainsSensitiveInformation | ForEach-Object { $_.Id })
+        $ids | Should -Be @('lab-1')
+    }
+}
+
+Describe 'ConvertTo-NormalisedBaseline reference ordering is deterministic' {
+    It 'orders references with identical (null) Names by Id, regardless of input order' {
+        # Orphan references resolve with Name = $null. Sorting by Name alone is stable, so two
+        # null-named orphans would keep whatever order the impure fetch produced - which is not
+        # guaranteed across runs and would break the byte-identical re-run guarantee.
+        $orphanZ = [PSCustomObject]@{ Id = 'ffffffff-0000-0000-0000-000000000001'; Name = $null }
+        $orphanA = [PSCustomObject]@{ Id = '00000000-0000-0000-0000-000000000001'; Name = $null }
+        $inv = [PSCustomObject]@{
+            Policies         = $script:rawInventory.Policies
+            Rules            = $script:rawInventory.Rules
+            ReferencedSits   = @($orphanZ, $orphanA)
+            ReferencedLabels = @($orphanZ, $orphanA)
+        }
+
+        $result = ConvertTo-NormalisedBaseline -Inventory $inv
+
+        @($result.Normalised.ReferencedSits   | ForEach-Object { $_.Id }) |
+            Should -Be @($orphanA.Id, $orphanZ.Id)
+        @($result.Normalised.ReferencedLabels | ForEach-Object { $_.Id }) |
+            Should -Be @($orphanA.Id, $orphanZ.Id)
+    }
+}
+
 Describe 'ConvertTo-NormalisedBaseline flattens enum collisions' {
     BeforeAll {
         # Enum-collision objects ({value, Value}) exist in real Purview proxy objects but cannot be
@@ -304,6 +361,30 @@ Describe 'ConvertTo-NormalisedBaseline flattens enum collisions' {
     It 'JSON output is parseable by ConvertFrom-Json without -AsHashTable' {
         $json = $script:collisionResult.Normalised | ConvertTo-Json -Depth 20
         { $json | ConvertFrom-Json } | Should -Not -Throw
+    }
+
+    It 'throws a clear error when a collision shape escapes the flatten patterns' {
+        # The replace patterns only match objects holding exactly {value, Value}. A collision
+        # carrying a sibling property escapes them, and the resulting JSON crashes
+        # ConvertFrom-Json on Windows PowerShell 5.1 with an obscure duplicated-keys error
+        # (PS 7 in CI throws a different one). The normaliser must fail loudly and name the
+        # problem instead. Only a case-sensitive dictionary can carry both key casings here.
+        $collision = New-Object System.Collections.Specialized.OrderedDictionary
+        $collision['value'] = 1
+        $collision['Value'] = 'Low'
+        $collision['extra'] = 'sibling property defeats the exact-pair pattern'
+        $rule = [PSCustomObject]@{
+            Name             = 'R'
+            ParentPolicyName = 'P'
+            SomeEnum         = $collision
+        }
+        $inv = [PSCustomObject]@{
+            Policies         = @([PSCustomObject]@{ Name = 'P' })
+            Rules            = @($rule)
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+        { ConvertTo-NormalisedBaseline -Inventory $inv } | Should -Throw '*enum collision*'
     }
 
     It 'normalised output contains no nested PSCustomObject with both lowercase value and uppercase Value properties' {

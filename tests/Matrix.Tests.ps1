@@ -48,6 +48,30 @@ Describe 'Export-DlpMatrixCsv' {
     }
 }
 
+Describe 'Export-DlpMatrixCsv surfaces unattached rules' {
+    BeforeEach {
+        $script:outDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pde-csv-ua-" + [Guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:outDir | Out-Null
+
+        $policy     = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $attached   = [PSCustomObject]@{ Name = 'R1'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0 }
+        $unattached = [PSCustomObject]@{ Name = 'Ghost Rule'; ParentPolicyName = 'Deleted Policy'; Mode = 'Enable'; Priority = 0 }
+        $norm = [PSCustomObject]@{ Policies = @($policy); Rules = @($attached, $unattached); ReferencedSits = @(); ReferencedLabels = @() }
+        $script:ghostView = ConvertTo-DlpView -Normalised $norm
+    }
+    AfterEach { Remove-Item -Recurse -Force $script:outDir -ErrorAction SilentlyContinue }
+
+    It 'emits a row for the unattached rule with an explicit marker in the Policy column' {
+        Export-DlpMatrixCsv -View $script:ghostView -OutDir $script:outDir -Tenant 'acme' -DateStamp '20260601'
+        $lines = (Get-Content (Join-Path $script:outDir 'baseline-20260601-acme-matrix.csv') -Raw) -split "`n" |
+            Where-Object { $_ -ne '' }
+        $lines.Count | Should -Be 3
+        $ghostRow = $lines | Where-Object { $_ -match 'Ghost Rule' }
+        $ghostRow | Should -Not -BeNullOrEmpty
+        $ghostRow | Should -Match '<unattached: Deleted Policy>'
+    }
+}
+
 Describe 'ConvertTo-CsvField' {
     It 'wraps a plain value in double quotes' {
         InModuleScope PurviewDlpRender {
