@@ -1,4 +1,4 @@
-# Purview DLP Export
+# Overview
 
 Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline. Captures policies, rules, and the names of any sensitivity labels and Sensitive Information Types referenced by those rules, then emits a byte-stable JSON body, a human-readable Markdown summary, and a `.meta.json` audit sidecar.
 
