@@ -24,6 +24,18 @@ function Compress-EnumCollision {
     $json = [regex]::Replace($json, $pattern1, '$1')
     $json = [regex]::Replace($json, $pattern2, '$1')
 
+    # The patterns above only match the exact two-property pair. A collision that survives them
+    # (e.g. with a sibling property) makes the JSON unparsable on Windows PowerShell 5.1 with
+    # an obscure duplicated-keys error, so fail loudly here and name the fix. Best-effort scan:
+    # both key casings inside one non-nested object.
+    $survivorPattern = '\{[^{}]*"value"\s*:[^{}]*"Value"\s*:|\{[^{}]*"Value"\s*:[^{}]*"value"\s*:'
+    $survivor = [regex]::Match($json, $survivorPattern)
+    if ($survivor.Success) {
+        $fragment = $json.Substring($survivor.Index, [Math]::Min(160, $json.Length - $survivor.Index))
+        throw ("Unflattened enum collision survived Compress-EnumCollision near: $fragment " +
+            "- extend the collision patterns in Compress-EnumCollision; this JSON would fail to parse on Windows PowerShell 5.1.")
+    }
+
     $json | ConvertFrom-Json
 }
 
@@ -94,6 +106,15 @@ function Format-NormalisedKey {
     $root | ConvertTo-Json -Depth 20 | ConvertFrom-Json
 }
 
+function Get-GuardedProperty {
+    # StrictMode-safe property read for heterogeneous parsed-JSON shapes: returns $null when
+    # the property is absent instead of throwing. Lookup is case-insensitive (PSObject rules),
+    # so one name covers id/Id and name/Name variants.
+    param($Object, [string] $Name)
+    if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+    $null
+}
+
 function Expand-AdvancedRuleReference {
     [CmdletBinding()]
     [OutputType([Hashtable])]
@@ -127,11 +148,16 @@ function Expand-AdvancedRuleReference {
             # Check for nested label/SIT shape (has Groups)
             if ($item.PSObject.Properties.Name -contains 'Groups' -and $null -ne $item.Groups) {
                 foreach ($group in $item.Groups) {
-                    if ($null -eq $group.Labels) { continue }
+                    if ($null -eq (Get-GuardedProperty -Object $group -Name 'Labels')) { continue }
                     foreach ($ref in $group.Labels) {
-                        $id   = $ref.Id
-                        $name = $ref.Name
-                        if ($ref.Type -eq 'Sensitivity') {
+                        # Guarded reads: real tenants emit heterogeneous label items, and an
+                        # id-less item references nothing (a null Id would also crash the
+                        # name-backfill hashtable lookup downstream).
+                        $id   = Get-GuardedProperty -Object $ref -Name 'Id'
+                        $name = Get-GuardedProperty -Object $ref -Name 'Name'
+                        $type = Get-GuardedProperty -Object $ref -Name 'Type'
+                        if (-not $id) { continue }
+                        if ($type -eq 'Sensitivity') {
                             $labels.Add([PSCustomObject]@{ Id = $id; Name = $name })
                         } else {
                             $sits.Add([PSCustomObject]@{ Id = $id; Name = $name })
@@ -140,8 +166,8 @@ function Expand-AdvancedRuleReference {
                 }
             } else {
                 # Flat SIT shape
-                $id   = if ($item.PSObject.Properties.Name -contains 'id') { $item.id } else { $item.Id }
-                $name = if ($item.PSObject.Properties.Name -contains 'name') { $item.name } else { $item.Name }
+                $id   = Get-GuardedProperty -Object $item -Name 'id'
+                $name = Get-GuardedProperty -Object $item -Name 'name'
                 if ($id) {
                     $sits.Add([PSCustomObject]@{ Id = $id; Name = $name })
                 }
@@ -289,24 +315,39 @@ function Get-DlpInventory {
         }
     }
 
+    # Bulk-fetch the SIT/label catalogues once and resolve names locally. Per-id remote calls
+    # with a silent catch made a transient lookup failure indistinguishable from a true orphan,
+    # silently changing the baseline bytes; a fetch failure now aborts the run instead. An id
+    # absent from the catalogue is a genuine orphan and keeps Name = $null.
+    $sitNameById = @{}
+    if ($sitIds.Count -gt 0) {
+        foreach ($sit in @(Get-DlpSensitiveInformationType -ErrorAction Stop)) {
+            $sitNameById[[string]$sit.Id] = $sit.Name
+        }
+    }
+    $labelNameById = @{}
+    if ($labelIds.Count -gt 0) {
+        foreach ($label in @(Get-Label -ErrorAction Stop)) {
+            # Rules reference labels by GUID; index ImmutableId too in case a tenant's rule
+            # references that form instead.
+            foreach ($idProp in 'Guid', 'ImmutableId') {
+                if ($label.PSObject.Properties.Name -contains $idProp -and $label.$idProp) {
+                    $labelNameById[[string]$label.$idProp] = $label.DisplayName
+                }
+            }
+        }
+    }
+
     $referencedSits = @()
     foreach ($id in $sitIds) {
-        try {
-            $sit = Get-DlpSensitiveInformationType -Identity $id -ErrorAction Stop
-            $referencedSits += [PSCustomObject]@{ Id = $id; Name = $sit.Name }
-        } catch {
-            $referencedSits += [PSCustomObject]@{ Id = $id; Name = $null }
-        }
+        $name = if ($sitNameById.ContainsKey([string]$id)) { $sitNameById[[string]$id] } else { $null }
+        $referencedSits += [PSCustomObject]@{ Id = $id; Name = $name }
     }
 
     $referencedLabels = @()
     foreach ($id in $labelIds) {
-        try {
-            $label = Get-Label -Identity $id -ErrorAction Stop
-            $referencedLabels += [PSCustomObject]@{ Id = $id; Name = $label.DisplayName }
-        } catch {
-            $referencedLabels += [PSCustomObject]@{ Id = $id; Name = $null }
-        }
+        $name = if ($labelNameById.ContainsKey([string]$id)) { $labelNameById[[string]$id] } else { $null }
+        $referencedLabels += [PSCustomObject]@{ Id = $id; Name = $name }
     }
 
     [PSCustomObject]@{
@@ -430,8 +471,10 @@ function ConvertTo-NormalisedBaseline {
             -KnownLabelIds $knownLabelIds
     } | Sort-Object ParentPolicyName, Name)
 
-    $sortedSits   = @($Inventory.ReferencedSits   | Sort-Object Name)
-    $sortedLabels = @($Inventory.ReferencedLabels | Sort-Object Name)
+    # Id tie-break: orphan references all have Name = $null, and a stable Name-only sort would
+    # preserve fetch order, which is not guaranteed across runs.
+    $sortedSits   = @($Inventory.ReferencedSits   | Sort-Object Name, Id)
+    $sortedLabels = @($Inventory.ReferencedLabels | Sort-Object Name, Id)
 
     $normalised = [PSCustomObject]@{
         Policies         = $strippedPolicies
@@ -446,6 +489,17 @@ function ConvertTo-NormalisedBaseline {
         Normalised     = $normalised
         StrippedFields = $script:VolatileFields
     }
+}
+
+function Write-NoBomLf {
+    # Shared writer: UTF-8 no BOM, LF endings. Mirrors the helper in PurviewDlpRender.psm1
+    # (each module stays standalone). LF matters on Windows PowerShell, where ConvertTo-Json
+    # emits CRLF between tokens; all five outputs must share line endings.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string] $Path, [Parameter(Mandatory)][string] $Content)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $lf = $Content -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($Path, $lf, $utf8NoBom)
 }
 
 function Export-DlpBaselineJson {
@@ -479,18 +533,19 @@ function Export-DlpBaselineJson {
     $metaPath = Join-Path $OutDir "baseline-$DateStamp-$Tenant.meta.json"
 
     $jsonBody = $Normalised | ConvertTo-Json -Depth 20
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($jsonPath, $jsonBody, $utf8NoBom)
+    Write-NoBomLf -Path $jsonPath -Content $jsonBody
 
     $meta = [PSCustomObject]@{
         Tenant              = $Tenant
         RunnerUpn           = $RunnerUpn
         ExtractTimestampUtc = (Get-Date).ToUniversalTime().ToString('o')
         StrippedFields      = $StrippedFields
-        ToolVersion         = (Get-Module PurviewDlpExport).Version.ToString()
+        # Highest-version pick: with two module versions loaded side-by-side, Get-Module
+        # returns an array and .Version.ToString() would emit garbage into the sidecar.
+        ToolVersion         = @(Get-Module PurviewDlpExport | Sort-Object Version -Descending)[0].Version.ToString()
     }
     $metaBody = $meta | ConvertTo-Json -Depth 5
-    [System.IO.File]::WriteAllText($metaPath, $metaBody, $utf8NoBom)
+    Write-NoBomLf -Path $metaPath -Content $metaBody
 
     [PSCustomObject]@{
         JsonPath = $jsonPath

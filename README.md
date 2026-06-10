@@ -62,7 +62,7 @@ The unit tests cover the normalisation and rendering logic but cannot exercise t
    cat out-smoke/baseline-*.meta.json | grep -i ToolVersion
    ```
 
-   Expected: `"ToolVersion": "0.1.0"` (matching `ModuleVersion` in `src/PurviewDlpExport.psd1`). If it shows `"0.0"`, the entrypoint loaded the module via the `.psm1` directly instead of the manifest — flag as a bug, do not commit the baseline.
+   Expected: `"ToolVersion": "0.2.0"` (matching `ModuleVersion` in `src/PurviewDlpExport.psd1`). If it shows `"0.0"`, the entrypoint loaded the module via the `.psm1` directly instead of the manifest — flag as a bug, do not commit the baseline.
 
 7. Re-run the same command immediately. Before the second run, copy the first JSON aside (e.g. `cp out-smoke/baseline-YYYYMMDD-<tenant>.json out-smoke/baseline-YYYYMMDD-<tenant>.json.first`). After the second run, compare:
 

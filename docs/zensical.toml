@@ -54,6 +54,9 @@ Home = "index.md"
 "Quick start" = "quickstart.md"
 
 [[nav]]
+"Smoke test (PS 5.1)" = "runbook-ps51.md"
+
+[[nav]]
 "Output schema" = "output-schema.md"
 
 [[nav]]

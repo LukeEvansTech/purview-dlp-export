@@ -1,4 +1,4 @@
-Set-StrictMode -Version 3.0
+Set-StrictMode -Version Latest
 
 function Format-Workload {
     # "Exchange,SharePoint,OneDriveForBusiness" -> "Exchange, SharePoint, OneDrive"
@@ -48,9 +48,10 @@ function Format-InstanceCount {
     [CmdletBinding()]
     [OutputType([string])]
     param([AllowNull()] $Min, [AllowNull()] $Max)
-    if ($null -eq $Min) { return $null }
+    # Empty-string guard: [int]'' coerces to 0, which would fabricate a "0-N instances" detail.
+    if ($null -eq $Min -or [string]::IsNullOrWhiteSpace([string]$Min)) { return $null }
     $minN = [int]$Min
-    if ($null -eq $Max -or [int]$Max -lt 0) { return "$minN+ instances" }
+    if ($null -eq $Max -or [string]::IsNullOrWhiteSpace([string]$Max) -or [int]$Max -lt 0) { return "$minN+ instances" }
     "$minN-$([int]$Max) instances"
 }
 
@@ -278,6 +279,36 @@ function Get-PolicyScope {
     @{ Included = $included.ToArray(); Excluded = $excluded.ToArray() }
 }
 
+function ConvertTo-RuleView {
+    # One rule's presentation model. Shared by the attached (per-policy) and unattached paths
+    # so a rule renders identically wherever it appears.
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param([Parameter(Mandatory)] $Rule)
+
+    $detectors = Get-RuleDetector -Rule $Rule
+    $summary = @($detectors | ForEach-Object { $_.Name }) -join ', '
+    $ruleMode     = if ($Rule.PSObject.Properties.Name -contains 'Mode')     { $Rule.Mode }     else { $null }
+    $rulePriority = if ($Rule.PSObject.Properties.Name -contains 'Priority') { $Rule.Priority } else { $null }
+    [PSCustomObject]@{
+        Name             = $Rule.Name
+        Mode             = Format-Mode -Mode $ruleMode
+        Enabled          = -not ($Rule.PSObject.Properties.Name -contains 'Disabled' -and $Rule.Disabled)
+        Priority         = $rulePriority
+        Comment          = if ($Rule.PSObject.Properties.Name -contains 'Comment') { Format-SingleLine $Rule.Comment } else { $null }
+        DetectionSummary = $summary
+        Conditions       = Get-RuleConditionLine -Rule $Rule
+        Actions          = Get-RuleActionLine -Rule $Rule
+        Exceptions       = Get-RuleExceptionLine -Rule $Rule
+    }
+}
+
+function Get-RuleParentPolicyName {
+    # Guarded read of ParentPolicyName for StrictMode safety.
+    param($Rule)
+    if ($Rule.PSObject.Properties.Name -contains 'ParentPolicyName') { $Rule.ParentPolicyName } else { $null }
+}
+
 function ConvertTo-DlpView {
     <#
     .SYNOPSIS
@@ -285,7 +316,9 @@ function ConvertTo-DlpView {
     .DESCRIPTION
         Pure transform. Each policy gets friendly workloads, mode, and scope; each rule gets
         a one-line DetectionSummary plus plain-English Conditions, Actions, and Exceptions.
-        Shared by the overview/detail/CSV emitters so all three agree.
+        Rules whose ParentPolicyName matches no exported policy are collected under
+        UnattachedRules rather than dropped, so the rendered outputs never silently disagree
+        with the JSON baseline. Shared by the overview/detail/CSV emitters so all three agree.
     #>
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -294,25 +327,8 @@ function ConvertTo-DlpView {
     $policies = @($Normalised.Policies | Sort-Object Priority, Name | ForEach-Object {
         $policy = $_
         $childRules = @($Normalised.Rules |
-            Where-Object { $_.ParentPolicyName -eq $policy.Name } |
-            Sort-Object Priority, Name | ForEach-Object {
-                $rule = $_
-                $detectors = Get-RuleDetector -Rule $rule
-                $summary = @($detectors | ForEach-Object { $_.Name }) -join ', '
-                $ruleMode     = if ($rule.PSObject.Properties.Name -contains 'Mode')     { $rule.Mode }     else { $null }
-                $rulePriority = if ($rule.PSObject.Properties.Name -contains 'Priority') { $rule.Priority } else { $null }
-                [PSCustomObject]@{
-                    Name             = $rule.Name
-                    Mode             = Format-Mode -Mode $ruleMode
-                    Enabled          = -not ($rule.PSObject.Properties.Name -contains 'Disabled' -and $rule.Disabled)
-                    Priority         = $rulePriority
-                    Comment          = if ($rule.PSObject.Properties.Name -contains 'Comment') { Format-SingleLine $rule.Comment } else { $null }
-                    DetectionSummary = $summary
-                    Conditions       = Get-RuleConditionLine -Rule $rule
-                    Actions          = Get-RuleActionLine -Rule $rule
-                    Exceptions       = Get-RuleExceptionLine -Rule $rule
-                }
-            })
+            Where-Object { (Get-RuleParentPolicyName -Rule $_) -eq $policy.Name } |
+            Sort-Object Priority, Name | ForEach-Object { ConvertTo-RuleView -Rule $_ })
 
         $scope          = Get-PolicyScope -Policy $policy
         $policyEnabled  = if ($policy.PSObject.Properties.Name -contains 'Enabled')   { [bool]$policy.Enabled }           else { $true }
@@ -331,7 +347,28 @@ function ConvertTo-DlpView {
         }
     })
 
-    [PSCustomObject]@{ Policies = $policies }
+    $policyNames = @($Normalised.Policies | ForEach-Object { $_.Name })
+    $unattached = @($Normalised.Rules |
+        Where-Object { $policyNames -notcontains (Get-RuleParentPolicyName -Rule $_) } |
+        Sort-Object ParentPolicyName, Name | ForEach-Object {
+            $vm = ConvertTo-RuleView -Rule $_
+            $vm | Add-Member -NotePropertyName ParentPolicyName `
+                -NotePropertyValue (Get-RuleParentPolicyName -Rule $_) -PassThru
+        })
+
+    [PSCustomObject]@{
+        Policies        = $policies
+        UnattachedRules = $unattached
+    }
+}
+
+function Get-UnattachedRuleView {
+    # Guarded accessor so emitters tolerate a view built before UnattachedRules existed.
+    param($View)
+    if ($View.PSObject.Properties.Name -contains 'UnattachedRules' -and $null -ne $View.UnattachedRules) {
+        return @($View.UnattachedRules)
+    }
+    @()
 }
 
 function Write-NoBomLf {
@@ -361,7 +398,8 @@ function Export-DlpOverviewMarkdown {
     # .NET process directory (often the user profile), NOT PowerShell's current location.
     $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 
-    $allRules    = @($View.Policies | ForEach-Object { $_.Rules })
+    $unattached  = @(Get-UnattachedRuleView -View $View)
+    $allRules    = @($View.Policies | ForEach-Object { $_.Rules }) + $unattached
     $policyCount = @($View.Policies).Count
     $ruleCount   = $allRules.Count
     $enforceCount = @($View.Policies | Where-Object { $_.Mode -eq 'Enforce' }).Count
@@ -374,6 +412,9 @@ function Export-DlpOverviewMarkdown {
     [void]$sb.AppendLine("- Date: $DateStamp")
     [void]$sb.AppendLine("- Policies: $policyCount ($enforceCount enforce, $testCount test)")
     [void]$sb.AppendLine("- Rules: $ruleCount ($disabledRules disabled)")
+    if ($unattached.Count -gt 0) {
+        [void]$sb.AppendLine("- Unattached rules: $($unattached.Count) (parent policy not in this export; see detail)")
+    }
     [void]$sb.AppendLine()
     [void]$sb.AppendLine("| Policy | Mode | Workloads | Rules | Detects | Acts | Priority |")
     [void]$sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- |")
@@ -392,6 +433,39 @@ function Export-DlpOverviewMarkdown {
     $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-overview.md"
     Write-NoBomLf -Path $path -Content $sb.ToString()
     [PSCustomObject]@{ OverviewPath = $path }
+}
+
+function Add-RuleDetailSection {
+    # Appends one rule's detail block to the builder. Shared by the per-policy sections and
+    # the unattached-rules section; the latter passes -ParentPolicyName to show the missing parent.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [System.Text.StringBuilder] $Builder,
+        [Parameter(Mandatory)] $RuleView,
+        [AllowNull()] [string] $ParentPolicyName
+    )
+
+    $r = $RuleView
+    [void]$Builder.AppendLine("### Rule: $($r.Name)")
+    [void]$Builder.AppendLine()
+    if ($PSBoundParameters.ContainsKey('ParentPolicyName')) {
+        [void]$Builder.AppendLine("- Parent policy: $ParentPolicyName")
+    }
+    [void]$Builder.AppendLine("- Mode: $($r.Mode)")
+    [void]$Builder.AppendLine("- Enabled: $($r.Enabled)")
+    [void]$Builder.AppendLine("- Priority: $($r.Priority)")
+    $detectsLine = if ([string]::IsNullOrWhiteSpace($r.DetectionSummary)) { '(no sensitive-info type; see conditions)' } else { $r.DetectionSummary }
+    [void]$Builder.AppendLine("- Detects: $detectsLine")
+    [void]$Builder.AppendLine("- Conditions:")
+    foreach ($c in @($r.Conditions)) { [void]$Builder.AppendLine("  - $c") }
+    [void]$Builder.AppendLine("- Actions:")
+    foreach ($a in @($r.Actions)) { [void]$Builder.AppendLine("  - $a") }
+    if (@($r.Exceptions).Count -gt 0) {
+        [void]$Builder.AppendLine("- Exceptions:")
+        foreach ($e in @($r.Exceptions)) { [void]$Builder.AppendLine("  - $e") }
+    }
+    if ($r.Comment) { [void]$Builder.AppendLine("- Comment: $($r.Comment)") }
+    [void]$Builder.AppendLine()
 }
 
 function Export-DlpDetailMarkdown {
@@ -437,23 +511,18 @@ function Export-DlpDetailMarkdown {
         [void]$sb.AppendLine()
 
         foreach ($r in $p.Rules) {
-            [void]$sb.AppendLine("### Rule: $($r.Name)")
-            [void]$sb.AppendLine()
-            [void]$sb.AppendLine("- Mode: $($r.Mode)")
-            [void]$sb.AppendLine("- Enabled: $($r.Enabled)")
-            [void]$sb.AppendLine("- Priority: $($r.Priority)")
-            $detectsLine = if ([string]::IsNullOrWhiteSpace($r.DetectionSummary)) { '(no sensitive-info type; see conditions)' } else { $r.DetectionSummary }
-            [void]$sb.AppendLine("- Detects: $detectsLine")
-            [void]$sb.AppendLine("- Conditions:")
-            foreach ($c in @($r.Conditions)) { [void]$sb.AppendLine("  - $c") }
-            [void]$sb.AppendLine("- Actions:")
-            foreach ($a in @($r.Actions)) { [void]$sb.AppendLine("  - $a") }
-            if (@($r.Exceptions).Count -gt 0) {
-                [void]$sb.AppendLine("- Exceptions:")
-                foreach ($e in @($r.Exceptions)) { [void]$sb.AppendLine("  - $e") }
-            }
-            if ($r.Comment) { [void]$sb.AppendLine("- Comment: $($r.Comment)") }
-            [void]$sb.AppendLine()
+            Add-RuleDetailSection -Builder $sb -RuleView $r
+        }
+    }
+
+    $unattached = @(Get-UnattachedRuleView -View $View)
+    if ($unattached.Count -gt 0) {
+        [void]$sb.AppendLine("## Unattached rules")
+        [void]$sb.AppendLine()
+        [void]$sb.AppendLine("These rules name a parent policy that is not present in this export.")
+        [void]$sb.AppendLine()
+        foreach ($r in $unattached) {
+            Add-RuleDetailSection -Builder $sb -RuleView $r -ParentPolicyName $r.ParentPolicyName
         }
     }
 
@@ -509,6 +578,24 @@ function Export-DlpMatrixCsv {
             ) -join ','
             [void]$sb.Append("$row`n")
         }
+    }
+
+    foreach ($r in @(Get-UnattachedRuleView -View $View)) {
+        # The named parent policy is not in the export, so there is no policy row to anchor
+        # to; mark it the same way orphan SIT references are marked in the Markdown outputs.
+        $row = @(
+            (ConvertTo-CsvField "<unattached: $($r.ParentPolicyName)>"),
+            (ConvertTo-CsvField $r.Name),
+            (ConvertTo-CsvField ''),
+            (ConvertTo-CsvField $r.Enabled),
+            (ConvertTo-CsvField $r.Mode),
+            (ConvertTo-CsvField $r.Priority),
+            (ConvertTo-CsvField $r.DetectionSummary),
+            (ConvertTo-CsvField (@($r.Conditions) -join '; ')),
+            (ConvertTo-CsvField (@($r.Actions) -join '; ')),
+            (ConvertTo-CsvField (@($r.Exceptions) -join '; '))
+        ) -join ','
+        [void]$sb.Append("$row`n")
     }
 
     $path = Join-Path $OutDir "baseline-$DateStamp-$Tenant-matrix.csv"

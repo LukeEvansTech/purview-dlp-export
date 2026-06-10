@@ -60,7 +60,9 @@ try {
     $normResult = ConvertTo-NormalisedBaseline -Inventory $inventory
 
     # Emit
-    $dateStamp = (Get-Date).ToString('yyyyMMdd')
+    # InvariantCulture: the default culture's calendar leaks into 'yyyy' (e.g. Buddhist-era
+    # 2569 on th-TH boxes), changing every output filename.
+    $dateStamp = (Get-Date).ToString('yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
     $jsonOut = Export-DlpBaselineJson `
         -Normalised $normResult.Normalised `
         -OutDir $OutDir `

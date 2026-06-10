@@ -18,8 +18,10 @@ Invoke-Pester ./tests/Normalise.Tests.ps1
 # CI-mode run (emits testResults.xml)
 Invoke-Pester ./tests -CI
 
-# Run the export against a real tenant (interactive MFA)
-./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@<tenant>.onmicrosoft.com -Tenant <short> -OutDir ./out
+# Run the export against a real tenant (interactive MFA).
+# -Tenant is optional: when omitted it's inferred from the UPN via Get-TenantNameFromUpn
+# (onmicrosoft.com label, else first domain label). -OutDir defaults to cwd and is created if absent.
+./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@<tenant>.onmicrosoft.com [-Tenant <short>] [-OutDir ./out]
 ```
 
 Linting runs in CI via the shared super-linter (`.github/workflows/lint.yml`); there is no local lint command. PSScriptAnalyzer config lives in `.github/linters/`.
@@ -41,9 +43,16 @@ ConvertTo-DlpView            → presentation view model (PURE; in PurviewDlpRen
 
 **The purity split is the key design line.** `Get-DlpInventory` is the only function that touches the tenant; everything downstream is a pure transform of its output. This is why every test runs against `tests/fixtures/raw-purview-sample.json` with no live connection — fixtures stand in for the impure boundary.
 
-**The view-model split (`ConvertTo-DlpView`) is the second design line.** The three rendered outputs all derive from one view model computed once, so they can never disagree about what a rule "means". The interpretation of Purview's `AdvancedRule` condition tree, `*Location` scope, and action flags into plain English lives only there. Note it **re-parses each rule's `AdvancedRule` JSON** to recover confidence levels and instance counts, because the normaliser deliberately keeps only `{Id, Name}` for detectors (it is byte-stability-focused, not render-focused).
+**The view-model split (`ConvertTo-DlpView`) is the second design line.** The three rendered outputs all derive from one view model computed once, so they can never disagree about what a rule "means". The interpretation of Purview's `AdvancedRule` condition tree, `*Location` scope, and action flags into plain English lives only there. Note it **re-parses each rule's `AdvancedRule` JSON** to recover confidence levels and instance counts, because the normaliser deliberately keeps only `{Id, Name}` for detectors (it is byte-stability-focused, not render-focused). Rules whose `ParentPolicyName` matches no exported policy land in the view's `UnattachedRules` collection and are rendered explicitly (overview warning line, detail section, `<unattached: name>` matrix rows) — never silently dropped, so the human outputs cannot disagree with the JSON.
+
+`Get-DlpInventory` resolves referenced SIT/label names by **bulk-fetching each catalogue once** and indexing locally; a fetch failure aborts the run. (Per-id lookups with a silent catch previously made a transient failure indistinguishable from a true orphan, silently changing baseline bytes.) An id absent from the catalogue is a genuine orphan and keeps `Name = $null`.
 
 **PowerShell 5.1 runtime.** The tool must run on Windows PowerShell 5.1 (locked-down target boxes); dev/CI run on PS 7. Keep all code 5.1-safe — no PS 6+ constructs (e.g. `ConvertFrom-Json -AsHashtable`, ternary, `??`). When reading view-model array properties for `.Count` or iteration, wrap in `@(...)`: PS 5.1 unwraps single-element array properties to scalars. PSScriptAnalyzer's `PSUseCompatibleSyntax`/`PSUseCompatibleCmdlets` (in `.github/linters/`) guard this statically. Byte-stability is only required re-run-to-re-run *on the same box* — output is not byte-identical across PS 5.1 vs 7 (different `ConvertTo-Json` escaping).
+
+Two 5.1 pitfalls that only surfaced on real target boxes (PS 7 tests can't catch them):
+
+- **All parsed PowerShell must be pure ASCII** (`src/`, `scripts/`, and `tests/*.ps1` — fixtures are data and exempt). PS 5.1 reads BOM-less files as the system ANSI codepage, so an em-dash or ellipsis in any string or comment breaks the parser at import. Use `-`/`...` instead. `Ps51Compat.Tests.ps1` enforces this byte-level.
+- **Resolve paths to absolute before any .NET IO call.** `[System.IO.File]::WriteAllText` resolves relative paths against the .NET process directory, not PowerShell's current location, so a relative `-OutDir` writes to the wrong place. Every emitter does `(Resolve-Path -LiteralPath $OutDir).Path` after the existence check — follow that pattern for any new file-writing code.
 
 ### Byte-stability machinery (inside `ConvertTo-NormalisedBaseline`)
 
@@ -58,7 +67,7 @@ Re-runs drift unless four things are neutralised, in this order:
 
 ### Output stability details
 
-- All five outputs (JSON, meta sidecar, two Markdown files, CSV) are written UTF-8 **without BOM** and with **LF line endings** via the shared `Write-NoBomLf` helper (the JSON/meta path in `PurviewDlpExport.psm1` does the same inline). The LF normalisation (`-replace "`r`n", "`n"`) matters because `StringBuilder.AppendLine` uses CRLF on Windows, which would break the cross-OS snapshot tests. `.gitattributes` locks every `tests/fixtures/expected-*.{md,csv}` snapshot to LF.
+- All five outputs (JSON, meta sidecar, two Markdown files, CSV) are written UTF-8 **without BOM** and with **LF line endings** via `Write-NoBomLf` (each module carries its own copy so both stay standalone). The LF normalisation (`-replace "`r`n", "`n"`) matters because `StringBuilder.AppendLine` and `ConvertTo-Json` use CRLF on Windows, which would break the cross-OS snapshot tests. `.gitattributes` locks every `tests/fixtures/expected-*.{md,csv}` snapshot to LF.
 - Free-text Purview fields (policy-tip custom text, comments) are collapsed to a single line (`Format-SingleLine`) so an embedded newline can't split a CSV row or break a Markdown bullet.
 
 ## Read-only invariant (non-negotiable)
@@ -77,14 +86,16 @@ Any match is a bug. (A naive `Set-`/`Remove-` grep gives false positives like `S
 - **`ExportJson.Tests.ps1`** — asserts no-BOM and **byte-identical output across two runs** with the same input.
 - **`View.Tests.ps1`** — drives `ConvertTo-DlpView` from the fixture and asserts the plain-English interpretation (confidence, instance counts, scope, actions, orphan rendering).
 - **`Overview.Tests.ps1` / `Detail.Tests.ps1` / `Matrix.Tests.ps1`** — each asserts no-BOM, two-run determinism, and a **byte-for-byte** snapshot (`tests/fixtures/expected-overview.md`, `expected-detail.md`, `expected-matrix.csv`). If you intentionally change a rendering, regenerate that snapshot (the recipe is in `docs/docs/contributing.md`).
-- **`Ps51Compat.Tests.ps1`** — guards that no `.psm1` uses a PS 6+ construct (greps for `-AsHashtable`).
+- **`Inventory.Tests.ps1`** — covers `Get-DlpInventory` against globally-stubbed, module-scope-mocked Purview cmdlets: bulk single-call catalogue fetch, name resolution, true-orphan handling, and fetch-failure propagation.
+- **`Tenant.Tests.ps1`** — covers `Get-TenantNameFromUpn`: the onmicrosoft.com label is preferred (case-insensitive suffix match, label case preserved), with a fallback to the first domain label for vanity domains.
+- **`Ps51Compat.Tests.ps1`** — guards 5.1 parseability: no `.psm1` uses a PS 6+ construct (greps for `-AsHashtable`), and every parsed PowerShell file (`src/`, `scripts/`, `tests/*.ps1`) contains only ASCII bytes.
 - **`Entrypoint.Tests.ps1`** — source-grep that the entrypoint wires the three emitters and not the retired single-Markdown export (the entrypoint itself needs a live tenant, so it can't be run in tests).
 
 CI runs Pester on ubuntu/macos/windows (`test.yml`) plus a parse-check of the `.psm1` and entrypoint script. Cross-OS matrix exists specifically to catch line-ending and encoding regressions.
 
 ## After changing the impure boundary
 
-Unit tests cannot exercise live Purview cmdlets, and the entrypoint itself is untested (it needs a tenant). After any meaningful change to `Connect-PurviewDlpSession`, `Get-DlpInventory`, or the entrypoint wiring, run the manual smoke procedure in `README.md` ("Manual smoke test") against a real tenant **on a PowerShell 5.1 box** (the runtime target): confirm five files are written (`.json`, `.meta.json`, `-overview.md`, `-detail.md`, `-matrix.csv`), the meta sidecar's `ToolVersion` matches `ModuleVersion` in `src/PurviewDlpExport.psd1` (a `"0.0"` means the entrypoint loaded the `.psm1` directly instead of the `.psd1` manifest), and a re-run diffs empty.
+Unit tests cannot exercise live Purview cmdlets, and the entrypoint itself is untested (it needs a tenant). After any meaningful change to `Connect-PurviewDlpSession`, `Get-DlpInventory`, or the entrypoint wiring, run the manual smoke procedure against a real tenant **on a PowerShell 5.1 box** (the runtime target) — the 5.1-tailored step-by-step lives in `docs/docs/runbook-ps51.md` (summary in `README.md` "Manual smoke test"): confirm five files are written (`.json`, `.meta.json`, `-overview.md`, `-detail.md`, `-matrix.csv`), the meta sidecar's `ToolVersion` matches `ModuleVersion` in `src/PurviewDlpExport.psd1` (a `"0.0"` means the entrypoint loaded the `.psm1` directly instead of the `.psd1` manifest), and a re-run diffs empty.
 
 ## Conventions
 

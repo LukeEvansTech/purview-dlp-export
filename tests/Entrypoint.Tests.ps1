@@ -20,4 +20,11 @@ Describe 'Export-PurviewDlp.ps1 emitter wiring' {
         # -Tenant must no longer be a mandatory parameter
         $script | Should -Not -Match '\[Parameter\(Mandatory\)\]\s*\[string\]\s*\$Tenant'
     }
+
+    It 'pins the filename date stamp to the invariant culture' {
+        # (Get-Date).ToString('yyyyMMdd') honours the current culture's calendar - on a
+        # Buddhist-era locale the year comes out as e.g. 2569, changing every filename.
+        $script = Get-Content (Join-Path $PSScriptRoot '..' 'scripts' 'Export-PurviewDlp.ps1') -Raw
+        $script | Should -Match "ToString\('yyyyMMdd',\s*\[System\.Globalization\.CultureInfo\]::InvariantCulture\)"
+    }
 }

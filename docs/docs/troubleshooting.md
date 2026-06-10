@@ -62,53 +62,10 @@ A naive grep for `Set-` will produce false positives: `Set-StrictMode` (PowerShe
 
 ## Manual smoke procedure
 
-Use this procedure after any meaningful change to `Connect-PurviewDlpSession` or `Get-DlpInventory`, and during initial week-1 bring-up against a new tenant.
+Run a full end-to-end smoke test after any meaningful change to `Connect-PurviewDlpSession` or `Get-DlpInventory`, and during initial week-1 bring-up against a new tenant. The step-by-step procedure — tailored for the supported **Windows PowerShell 5.1** runtime target, with PS-native verification commands — lives in **[End-to-end smoke test (PS 5.1)](runbook-ps51.md)**.
 
-1. Open PowerShell 7. Verify `ExchangeOnlineManagement` ≥ 3.0 is installed:
+The checks that catch the bugs most often seen at this boundary:
 
-   ```powershell
-   Get-Module ExchangeOnlineManagement -ListAvailable | Select-Object Name, Version
-   ```
-
-2. Create a clean output directory:
-
-   ```powershell
-   mkdir ./out-smoke
-   ```
-
-3. Run the export:
-
-   ```powershell
-   ./scripts/Export-PurviewDlp.ps1 `
-       -UserPrincipalName admin@<tenant>.onmicrosoft.com `
-       -Tenant <tenant-short-name> `
-       -OutDir ./out-smoke
-   ```
-
-4. Authenticate when prompted (interactive MFA flow).
-
-5. Verify three files were written: `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, and `.md`.
-
-6. Verify the meta sidecar records the correct tool version:
-
-   ```bash
-   cat out-smoke/baseline-*.meta.json | grep -i ToolVersion
-   ```
-
-   Expected: `"ToolVersion": "0.1.0"`. If it shows `"0.0"`, the entrypoint loaded the module via the `.psm1` directly instead of the manifest — flag as a bug, do not commit the baseline.
-
-7. Re-run the same command immediately. Copy the first JSON aside first:
-
-   ```bash
-   cp out-smoke/baseline-YYYYMMDD-<tenant>.json out-smoke/baseline-YYYYMMDD-<tenant>.json.first
-   ```
-
-   After the second run:
-
-   ```bash
-   diff out-smoke/baseline-YYYYMMDD-<tenant>.json.first out-smoke/baseline-YYYYMMDD-<tenant>.json
-   ```
-
-   Expected: empty diff. If there is a diff, a field that should be stripped isn't — capture it and add it to `$script:VolatileFields` in `src/PurviewDlpExport.psm1`, with a corresponding test.
-
-8. Open the `.md` and skim for readability. The DLP Team should be able to read it without referring to the JSON.
+- **Five files** must be written — `baseline-YYYYMMDD-<tenant>.json`, `.meta.json`, `-overview.md`, `-detail.md`, `-matrix.csv`. Only `.json` + `.meta.json` + a single `.md` means the entrypoint is wired to the retired single-Markdown emitter.
+- **`ToolVersion` in the meta sidecar** must match `ModuleVersion` in `src/PurviewDlpExport.psd1`. A `0.0` means the entrypoint loaded the `.psm1` directly instead of the manifest — do not commit the baseline.
+- **A re-run must be byte-identical** (compared on the same box). A diff means a per-run field is leaking through — add it to `$script:VolatileFields` in `src/PurviewDlpExport.psm1` with a corresponding strip test. Watch for the absent-vs-null false positives noted above.

@@ -240,6 +240,62 @@ Describe 'regression: advanced-rule nested Groups (label) shape does not crash' 
     }
 }
 
+Describe 'Format-InstanceCount edge cases' {
+    It 'returns null for an empty-string Min instead of throwing on the int cast' {
+        InModuleScope PurviewDlpRender {
+            Format-InstanceCount -Min '' -Max '5' | Should -BeNullOrEmpty
+        }
+    }
+    It 'treats an empty-string Max as open-ended instead of coercing to 0' {
+        InModuleScope PurviewDlpRender {
+            Format-InstanceCount -Min '10' -Max '' | Should -Be '10+ instances'
+        }
+    }
+    It 'still formats normal min/max pairs' {
+        InModuleScope PurviewDlpRender {
+            Format-InstanceCount -Min '1' -Max '50' | Should -Be '1-50 instances'
+            Format-InstanceCount -Min '10' -Max '-1' | Should -Be '10+ instances'
+        }
+    }
+}
+
+Describe 'unattached rules are surfaced, not dropped' {
+    BeforeAll {
+        # A rule whose ParentPolicyName matches no exported policy must still appear in the
+        # view (and therefore in every rendered output) - silently dropping it makes the
+        # human outputs disagree with the JSON baseline.
+        $policy     = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $attached   = [PSCustomObject]@{ Name = 'R1'; ParentPolicyName = 'P'; Mode = 'Enable'; Priority = 0 }
+        $unattached = [PSCustomObject]@{ Name = 'Ghost Rule'; ParentPolicyName = 'Deleted Policy'; Mode = 'Enable'; Priority = 0; BlockAccess = $true }
+        $script:normWithGhost = [PSCustomObject]@{
+            Policies         = @($policy)
+            Rules            = @($attached, $unattached)
+            ReferencedSits   = @()
+            ReferencedLabels = @()
+        }
+        $script:ghostView = ConvertTo-DlpView -Normalised $script:normWithGhost
+    }
+
+    It 'exposes an UnattachedRules collection on the view' {
+        $script:ghostView.PSObject.Properties.Name | Should -Contain 'UnattachedRules'
+    }
+    It 'is empty for the fixture (every rule has a matching policy)' {
+        @($script:view.UnattachedRules).Count | Should -Be 0
+    }
+    It 'carries the dropped rule with its ParentPolicyName' {
+        @($script:ghostView.UnattachedRules).Count | Should -Be 1
+        $script:ghostView.UnattachedRules[0].Name | Should -Be 'Ghost Rule'
+        $script:ghostView.UnattachedRules[0].ParentPolicyName | Should -Be 'Deleted Policy'
+    }
+    It 'interprets conditions/actions for unattached rules like any other rule' {
+        ($script:ghostView.UnattachedRules[0].Actions -join "`n") | Should -Match 'Block access'
+    }
+    It 'does not also attach the ghost rule to a policy' {
+        $allAttached = @($script:ghostView.Policies | ForEach-Object { $_.Rules } | ForEach-Object { $_.Name })
+        $allAttached | Should -Not -Contain 'Ghost Rule'
+    }
+}
+
 Describe 'policy scope renders location objects in plain terms' {
     BeforeAll {
         # Real Purview *Location values are rich objects, not strings. Render their DisplayName
