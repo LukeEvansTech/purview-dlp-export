@@ -24,7 +24,15 @@ Invoke-Pester ./tests -CI
 ./scripts/Export-PurviewDlp.ps1 -UserPrincipalName admin@<tenant>.onmicrosoft.com [-Tenant <short>] [-OutDir ./out]
 ```
 
-Linting runs in CI via the shared super-linter (`.github/workflows/lint.yml`); there is no local lint command. PSScriptAnalyzer config lives in `.github/linters/`.
+Linting runs in CI via the shared super-linter (`.github/workflows/lint.yml`). Super-linter reads its per-linter configs from `.github/linters/` — note its `.markdown-lint.yml` there enforces a 400-char line limit even though the root `.markdownlint.yml` disables MD013. To pre-flight locally before pushing:
+
+```bash
+npx prettier --check "docs/docs/**/*.md" README.md   # respects .prettierignore
+uvx codespell src/ tests/ docs/ scripts/
+pwsh -c "Invoke-ScriptAnalyzer -Path ./src -Settings ./.github/linters/.powershell-psscriptanalyzer.psd1 -Recurse"  # one -Path per call; the parameter rejects arrays
+```
+
+Super-linter also runs textlint terminology ("id" → "ID", "bash" → "Bash" in prose; code spans are exempt). For codespell false positives (e.g. Pester's `AfterAll`), use a bare `# codespell:ignore` line comment — the `# codespell:ignore <word>` form does not suppress.
 
 ## Architecture
 
@@ -101,4 +109,7 @@ Unit tests cannot exercise live Purview cmdlets, and the entrypoint itself is un
 
 - **Output files are never committed** — they belong with the engagement workspace, and `.gitignore` excludes `out*/`.
 - The version of record is `ModuleVersion` in `src/PurviewDlpExport.psd1`; the entrypoint loads via the `.psd1` manifest, not the `.psm1`, so the version flows into the meta sidecar.
+- **Releases**: when bumping `ModuleVersion`, also cut the matching section in `docs/docs/CHANGELOG.md` (Keep a Changelog format, with compare links), update the `ToolVersion` literals in `README.md` and `docs/docs/output-schema.md`, and after merge tag `vX.Y.Z` + create a GitHub release (current: v0.2.0).
 - Docs live in `docs/` and build with [Zensical](https://zensical.org/) (`npm --prefix docs run build`); they publish to GitHub Pages via `docs.yml`.
+- **Zensical admonitions (`!!! note`) vs Prettier**: admonition bodies must be 4-space-indented to render, but Prettier de-indents them into plain paragraphs. Any doc page using admonitions must be listed in `.prettierignore` (currently `docs/docs/runbook-ps51.md`).
+- Field-delivery of the tool to a locked-down box is a zip of `scripts/` + `src/` (layout preserved — the entrypoint resolves `../src` relative to itself) plus a run guide; remind the operator to `Unblock-File` after extracting (Mark-of-the-Web blocks the scripts).
