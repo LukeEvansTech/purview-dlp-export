@@ -2,7 +2,7 @@
 # https://zensical.org/docs/
 
 [project]
-site_name = "purview-dlp-export"
+site_name = "Purview DLP Export"
 site_description = "Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline (JSON + Markdown summary + audit sidecar)"
 site_author = "Luke Evans"
 site_url = "https://lukeevanstech.github.io/purview-dlp-export/"

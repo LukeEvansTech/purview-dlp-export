@@ -1,9 +1,9 @@
-# purview-dlp-export
+# Purview DLP Export
 
 Read-only export of a Microsoft Purview DLP ruleset to a re-runnable, idempotent baseline. Captures policies, rules, and the names of any sensitivity labels and Sensitive Information Types referenced by those rules, then emits a byte-stable JSON body, a human-readable Markdown summary, and a `.meta.json` audit sidecar.
 
 !!! note "Not affiliated with Microsoft"
-"Microsoft Purview" and "Microsoft 365" are Microsoft trademarks. This tool calls public PowerShell cmdlets from the `ExchangeOnlineManagement` module and does not have any affiliation with Microsoft.
+    "Microsoft Purview" and "Microsoft 365" are Microsoft trademarks. This tool calls public PowerShell cmdlets from the `ExchangeOnlineManagement` module and does not have any affiliation with Microsoft.
 
 ## What you get out
 
