@@ -435,7 +435,7 @@ function Export-DlpOverviewMarkdown {
     [PSCustomObject]@{ OverviewPath = $path }
 }
 
-function Add-RuleDetailLines {
+function Add-RuleDetailSection {
     # Appends one rule's detail block to the builder. Shared by the per-policy sections and
     # the unattached-rules section; the latter passes -ParentPolicyName to show the missing parent.
     [CmdletBinding()]
@@ -511,7 +511,7 @@ function Export-DlpDetailMarkdown {
         [void]$sb.AppendLine()
 
         foreach ($r in $p.Rules) {
-            Add-RuleDetailLines -Builder $sb -RuleView $r
+            Add-RuleDetailSection -Builder $sb -RuleView $r
         }
     }
 
@@ -522,7 +522,7 @@ function Export-DlpDetailMarkdown {
         [void]$sb.AppendLine("These rules name a parent policy that is not present in this export.")
         [void]$sb.AppendLine()
         foreach ($r in $unattached) {
-            Add-RuleDetailLines -Builder $sb -RuleView $r -ParentPolicyName $r.ParentPolicyName
+            Add-RuleDetailSection -Builder $sb -RuleView $r -ParentPolicyName $r.ParentPolicyName
         }
     }
 

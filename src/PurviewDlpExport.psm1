@@ -25,7 +25,7 @@ function Compress-EnumCollision {
     $json = [regex]::Replace($json, $pattern2, '$1')
 
     # The patterns above only match the exact two-property pair. A collision that survives them
-    # (e.g. with a sibling property) makes the JSON unparseable on Windows PowerShell 5.1 with
+    # (e.g. with a sibling property) makes the JSON unparsable on Windows PowerShell 5.1 with
     # an obscure duplicated-keys error, so fail loudly here and name the fix. Best-effort scan:
     # both key casings inside one non-nested object.
     $survivorPattern = '\{[^{}]*"value"\s*:[^{}]*"Value"\s*:|\{[^{}]*"Value"\s*:[^{}]*"value"\s*:'

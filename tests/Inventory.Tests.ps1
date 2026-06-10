@@ -3,14 +3,15 @@ BeforeAll {
     Import-Module $modulePath -Force
 
     # The Purview cmdlets do not exist off-tenant. Define global stubs so Pester can mock them
-    # in the module's scope; the stubs accept the parameters the module passes so binding works.
+    # in the module's scope. CmdletBinding lets the module's -ErrorAction Stop bind; the module
+    # passes no other parameters (catalogues are bulk-fetched, never queried per id).
     function global:Get-DlpCompliancePolicy { [CmdletBinding()] param() }
     function global:Get-DlpComplianceRule { [CmdletBinding()] param() }
-    function global:Get-DlpSensitiveInformationType { [CmdletBinding()] param($Identity) }
-    function global:Get-Label { [CmdletBinding()] param($Identity) }
+    function global:Get-DlpSensitiveInformationType { [CmdletBinding()] param() }
+    function global:Get-Label { [CmdletBinding()] param() }
 }
 
-AfterAll {
+AfterAll { # codespell:ignore
     Remove-Item -Path function:global:Get-DlpCompliancePolicy -ErrorAction SilentlyContinue
     Remove-Item -Path function:global:Get-DlpComplianceRule -ErrorAction SilentlyContinue
     Remove-Item -Path function:global:Get-DlpSensitiveInformationType -ErrorAction SilentlyContinue

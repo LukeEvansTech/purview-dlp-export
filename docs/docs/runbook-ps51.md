@@ -5,7 +5,9 @@ A start-to-finish runbook for verifying a build against a **live tenant** on a l
 Run this after any meaningful change to the impure boundary (`Connect-PurviewDlpSession`, `Get-DlpInventory`, or the entrypoint wiring), and during week-1 bring-up against a new tenant. The unit tests (`Invoke-Pester ./tests`) cover normalisation and rendering against fixtures, but cannot exercise the live Purview cmdlets — this procedure is how that boundary gets tested.
 
 !!! note "Why the PS 5.1 variant"
-    Byte-stability is only guaranteed **re-run-to-re-run on the same box**. Output is *not* byte-identical across PowerShell 5.1 and 7 (different `ConvertTo-Json` escaping). The determinism check in step 6 must therefore run on the 5.1 machine. The verification commands below are PS-native (`Compare-Object`, `Select-String`) rather than the bash `diff`/`grep` used elsewhere in the docs, because a hardened Windows box usually has no git-bash.
+    Byte-stability is only guaranteed **re-run-to-re-run on the same box**. Output is _not_ byte-identical across PowerShell 5.1 and 7 (different `ConvertTo-Json` escaping).
+    The determinism check in step 6 must therefore run on the 5.1 machine. The verification commands below are PS-native (`Compare-Object`, `Select-String`) rather than
+    the Bash `diff`/`grep` used elsewhere in the docs, because a hardened Windows box usually has no git-bash.
 
 ## 0. Confirm you are on 5.1
 
@@ -34,11 +36,11 @@ Get-Module ExchangeOnlineManagement -ListAvailable | Select-Object Name, Version
 Install-Module ExchangeOnlineManagement -MinimumVersion 3.0 -Scope CurrentUser -Force
 ```
 
-The authenticating account needs **Compliance Administrator** or **DLP Reader** on the tenant. Without it, `Get-DlpCompliancePolicy` returns *zero* records (not an access-denied error), and the tool treats "0 policies" as a permissions signal and stops. See [Troubleshooting](troubleshooting.md#empty-inventory-error-0-policies-returned).
+The authenticating account needs **Compliance Administrator** or **DLP Reader** on the tenant. Without it, `Get-DlpCompliancePolicy` returns _zero_ records (not an access-denied error), and the tool treats "0 policies" as a permissions signal and stops. See [Troubleshooting](troubleshooting.md#empty-inventory-error-0-policies-returned).
 
 ## 2. Read-only pre-flight
 
-Prove the build cannot write to Purview *before* pointing it at a live tenant:
+Prove the build cannot write to Purview _before_ pointing it at a live tenant:
 
 ```powershell
 Select-String -Path .\src\PurviewDlpExport.psm1 `
@@ -67,13 +69,13 @@ Get-ChildItem .\out-smoke\baseline-*.* | Select-Object Name, Length
 
 Expected: one date-stamped set of five files.
 
-| File | What it is |
-|------|-----------|
-| `baseline-YYYYMMDD-<tenant>.json` | normalised, byte-stable body |
-| `baseline-YYYYMMDD-<tenant>.meta.json` | audit sidecar |
-| `baseline-YYYYMMDD-<tenant>-overview.md` | estate scan table |
-| `baseline-YYYYMMDD-<tenant>-detail.md` | per-rule narrative |
-| `baseline-YYYYMMDD-<tenant>-matrix.csv` | one row per rule, for Excel |
+| File                                     | What it is                   |
+| ---------------------------------------- | ---------------------------- |
+| `baseline-YYYYMMDD-<tenant>.json`        | normalised, byte-stable body |
+| `baseline-YYYYMMDD-<tenant>.meta.json`   | audit sidecar                |
+| `baseline-YYYYMMDD-<tenant>-overview.md` | estate scan table            |
+| `baseline-YYYYMMDD-<tenant>-detail.md`   | per-rule narrative           |
+| `baseline-YYYYMMDD-<tenant>-matrix.csv`  | one row per rule, for Excel  |
 
 If you get only `.json` + `.meta.json` + a single `.md`, the entrypoint is wired to the retired single-Markdown emitter — that is a bug.
 
@@ -114,7 +116,8 @@ if ($a.Length -eq $b.Length -and -not (Compare-Object $a $b)) {
 Expected: **`IDENTICAL`.** If it drifts, a per-run field is leaking through. Capture the differing key, add it to `$script:VolatileFields` in `src\PurviewDlpExport.psm1`, and lock it in with a strip test in `tests\Normalise.Tests.ps1`.
 
 !!! note "Absent-vs-null is not drift"
-    Optional Purview properties that flip between *absent* and *null* across runs — `ContextPropertiesContainWords`, `GroupSet`, `appgroup` — are tenant-side noise, not a tool bug. See [Property-presence drift between runs](troubleshooting.md#property-presence-drift-between-runs).
+    Optional Purview properties that flip between _absent_ and _null_ across runs — `ContextPropertiesContainWords`, `GroupSet`, `appgroup` — are tenant-side noise,
+    not a tool bug. See [Property-presence drift between runs](troubleshooting.md#property-presence-drift-between-runs).
 
 ## 7. Verify human readability
 

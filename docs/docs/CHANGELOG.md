@@ -20,14 +20,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- `Get-DlpInventory` resolves referenced SIT/label names by bulk-fetching each catalogue once instead of one remote call per id. A catalogue fetch failure now aborts the run; previously a transient failure was silently recorded as an orphan, changing the baseline bytes.
+- `Get-DlpInventory` resolves referenced SIT/label names by bulk-fetching each catalogue once instead of one remote call per ID. A catalogue fetch failure now aborts the run; previously a transient failure was silently recorded as an orphan, changing the baseline bytes.
 - `ReferencedSits`/`ReferencedLabels` sort by `Name, Id` so null-named orphan references order deterministically across runs.
 - The JSON body and meta sidecar are written with LF line endings on every OS, matching the three rendered outputs. On Windows this changes the baseline once (CRLF to LF); re-runs are stable thereafter.
 - The output filename date stamp is pinned to the invariant culture so locale calendars (e.g. Buddhist era) cannot change filenames.
 
 ### Fixed
 
-- `Expand-AdvancedRuleReference` no longer throws under StrictMode on heterogeneous `AdvancedRule` shapes (flat items with no id, Groups labels missing `Name`/`Type`); id-less references are skipped.
+- `Expand-AdvancedRuleReference` no longer throws under StrictMode on heterogeneous `AdvancedRule` shapes (flat items with no ID, Groups labels missing `Name`/`Type`); references without an ID are skipped.
 - `Format-InstanceCount` no longer fabricates `0-N instances` / `N-0 instances` from empty-string min/max values.
 
 ### Removed
