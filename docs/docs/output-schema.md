@@ -4,9 +4,9 @@ Every run produces five files. The JSON body is the machine-readable baseline; t
 
 ---
 
-## JSON body — `baseline-YYYYMMDD-<tenant>.json`
+## JSON body - `baseline-YYYYMMDD-<tenant>.json`
 
-The byte-stable normalised ruleset. Re-running on an unchanged tenant produces an identical file — this is the property that makes `git diff` of successive baselines a clean changelog.
+The byte-stable normalised ruleset. Re-running on an unchanged tenant produces an identical file - this is the property that makes `git diff` of successive baselines a clean changelog.
 
 ### Top-level keys
 
@@ -37,7 +37,7 @@ The normaliser does four things to guarantee a stable body:
 1. Strips the volatile fields listed above.
 2. Backfills SIT and label names from the `AdvancedRule` JSON embedded in each rule (Purview stores the canonical condition representation there, even for rules created through the simple UI).
 3. Deep-sorts all object keys alphabetically. Without this, Purview occasionally emits the same object with keys in a different order between calls.
-4. Flattens Purview "enum-collision" pairs — objects of the form `{ "value": 3, "Value": "Enforce" }` — to just the string label (`"Enforce"`). These pairs are a Purview serialisation artefact; flattening them makes the output semantically stable.
+4. Flattens Purview "enum-collision" pairs - objects of the form `{ "value": 3, "Value": "Enforce" }` - to just the string label (`"Enforce"`). These pairs are a Purview serialisation artefact; flattening them makes the output semantically stable.
 
 ### Sample rule shape
 
@@ -75,11 +75,11 @@ If a rule references a SIT or label ID that no longer exists in the tenant (i.e.
 }
 ```
 
-In the detail Markdown and the CSV matrix, orphan references render as `<orphan id=GUID>`. Surfacing orphans is deliberate — they are candidates for clean-up during realignment.
+In the detail Markdown and the CSV matrix, orphan references render as `<orphan id=GUID>`. Surfacing orphans is deliberate - they are candidates for clean-up during realignment.
 
 ---
 
-## Meta sidecar — `baseline-YYYYMMDD-<tenant>.meta.json`
+## Meta sidecar - `baseline-YYYYMMDD-<tenant>.meta.json`
 
 Written alongside the JSON body. Contains fields that vary per run and therefore cannot be in the stable body without breaking diff stability.
 
@@ -88,7 +88,7 @@ Written alongside the JSON body. Contains fields that vary per run and therefore
 | `Tenant`              | The `-Tenant` argument passed to the entrypoint                                   |
 | `RunnerUpn`           | The `-UserPrincipalName` argument (the account that authenticated)                |
 | `ExtractTimestampUtc` | ISO 8601 UTC timestamp of when the extract ran                                    |
-| `StrippedFields`      | Array of field names removed from the body — the complete volatile-field manifest |
+| `StrippedFields`      | Array of field names removed from the body - the complete volatile-field manifest |
 | `ToolVersion`         | `ModuleVersion` from `src/PurviewDlpExport.psd1` at the time of the run           |
 
 Example:
@@ -112,7 +112,7 @@ Example:
 
 ---
 
-## Overview Markdown — `baseline-YYYYMMDD-<tenant>-overview.md`
+## Overview Markdown - `baseline-YYYYMMDD-<tenant>-overview.md`
 
 Designed for a quick scan of the full DLP estate. One header block with policy/rule counts, followed by one Markdown table row per policy.
 
@@ -130,13 +130,13 @@ Designed for a quick scan of the full DLP estate. One header block with policy/r
 
 Columns: `Policy`, `Mode`, `Workloads`, `Rules`, `Detects`, `Acts`, `Priority`.
 
-- **Workloads** — raw Purview workload tokens mapped to friendly names (e.g. `OneDriveForBusiness` → `OneDrive`).
-- **Detects** — unique detection summaries (SIT/label names) across all rules in the policy, semicolon-separated.
-- **Acts** — unique action verbs across all rules, semicolon-separated.
+- **Workloads** - raw Purview workload tokens mapped to friendly names (e.g. `OneDriveForBusiness` → `OneDrive`).
+- **Detects** - unique detection summaries (SIT/label names) across all rules in the policy, semicolon-separated.
+- **Acts** - unique action verbs across all rules, semicolon-separated.
 
 ---
 
-## Detail Markdown — `baseline-YYYYMMDD-<tenant>-detail.md`
+## Detail Markdown - `baseline-YYYYMMDD-<tenant>-detail.md`
 
 A full per-policy/per-rule narrative for deep reading. One `## Policy` section per policy and one `### Rule` sub-section per rule.
 
@@ -156,11 +156,11 @@ Conditions are rendered in plain English:
 - File-extension conditions: `File extensions: doc, docx, pdf`
 - No conditions: `(no conditions)`
 
-Advanced-rule confidence and instance-count thresholds are rendered inline (e.g. `medium confidence, 10+ instances`). Orphan references render as `<orphan id=GUID>` — the angle-bracket form makes them visually distinctive.
+Advanced-rule confidence and instance-count thresholds are rendered inline (e.g. `medium confidence, 10+ instances`). Orphan references render as `<orphan id=GUID>` - the angle-bracket form makes them visually distinctive.
 
 ---
 
-## CSV matrix — `baseline-YYYYMMDD-<tenant>-matrix.csv`
+## CSV matrix - `baseline-YYYYMMDD-<tenant>-matrix.csv`
 
 One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
 
@@ -181,4 +181,4 @@ One row per rule, suitable for sorting and filtering in Excel or any CSV viewer.
 
 All data fields are RFC-4180 quoted so commas and semicolons inside values never split a row. The header row is unquoted. Line endings are LF throughout.
 
-The file is UTF-8 **without** a BOM (all five outputs are, to keep re-runs byte-comparable). One consequence: when tenant data contains non-ASCII characters (e.g. accented policy names), Excel's double-click open may mis-decode them — import via _Data → From Text/CSV_ and pick UTF-8 instead.
+The file is UTF-8 **without** a BOM (all five outputs are, to keep re-runs byte-comparable). One consequence: when tenant data contains non-ASCII characters (e.g. accented policy names), Excel's double-click open may mis-decode them - import via _Data → From Text/CSV_ and pick UTF-8 instead.

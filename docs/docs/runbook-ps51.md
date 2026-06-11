@@ -1,8 +1,8 @@
 # End-to-end smoke test (Windows PowerShell 5.1)
 
-A start-to-finish runbook for verifying a build against a **live tenant** on a locked-down **Windows PowerShell 5.1** box — the supported runtime target, and the box where byte-stability and parser-compatibility regressions actually surface.
+A start-to-finish runbook for verifying a build against a **live tenant** on a locked-down **Windows PowerShell 5.1** box - the supported runtime target, and the box where byte-stability and parser-compatibility regressions actually surface.
 
-Run this after any meaningful change to the impure boundary (`Connect-PurviewDlpSession`, `Get-DlpInventory`, or the entrypoint wiring), and during week-1 bring-up against a new tenant. The unit tests (`Invoke-Pester ./tests`) cover normalisation and rendering against fixtures, but cannot exercise the live Purview cmdlets — this procedure is how that boundary gets tested.
+Run this after any meaningful change to the impure boundary (`Connect-PurviewDlpSession`, `Get-DlpInventory`, or the entrypoint wiring), and during week-1 bring-up against a new tenant. The unit tests (`Invoke-Pester ./tests`) cover normalisation and rendering against fixtures, but cannot exercise the live Purview cmdlets - this procedure is how that boundary gets tested.
 
 !!! note "Why the PS 5.1 variant"
     Byte-stability is only guaranteed **re-run-to-re-run on the same box**. Output is _not_ byte-identical across PowerShell 5.1 and 7 (different `ConvertTo-Json` escaping).
@@ -47,7 +47,7 @@ Select-String -Path .\src\PurviewDlpExport.psm1 `
     -Pattern '(New|Set|Remove|Enable|Disable|Reset)-(Dlp|Compliance|Label|Sensitive|IPP)'
 ```
 
-Expected: **no output.** Any match is a bug — stop and surface it. The pattern is scoped to Purview-domain nouns, so it won't false-positive on `Set-StrictMode` or the internal `Remove-VolatileFields` helper.
+Expected: **no output.** Any match is a bug - stop and surface it. The pattern is scoped to Purview-domain nouns, so it won't false-positive on `Set-StrictMode` or the internal `Remove-VolatileFields` helper.
 
 ## 3. Clean output directory + first run
 
@@ -59,7 +59,7 @@ mkdir .\out-smoke -Force | Out-Null
     -OutDir .\out-smoke
 ```
 
-`-Tenant` is optional — it is inferred from the UPN (`admin@acme.onmicrosoft.com` → `acme`). Pass `-Tenant <short>` explicitly only for a vanity domain. Authenticate at the interactive MFA prompt when it appears.
+`-Tenant` is optional - it is inferred from the UPN (`admin@acme.onmicrosoft.com` → `acme`). Pass `-Tenant <short>` explicitly only for a vanity domain. Authenticate at the interactive MFA prompt when it appears.
 
 ## 4. Verify all five outputs were written
 
@@ -77,7 +77,7 @@ Expected: one date-stamped set of five files.
 | `baseline-YYYYMMDD-<tenant>-detail.md`   | per-rule narrative           |
 | `baseline-YYYYMMDD-<tenant>-matrix.csv`  | one row per rule, for Excel  |
 
-If you get only `.json` + `.meta.json` + a single `.md`, the entrypoint is wired to the retired single-Markdown emitter — that is a bug.
+If you get only `.json` + `.meta.json` + a single `.md`, the entrypoint is wired to the retired single-Markdown emitter - that is a bug.
 
 ## 5. Verify the tool version flowed through the manifest
 
@@ -85,7 +85,7 @@ If you get only `.json` + `.meta.json` + a single `.md`, the entrypoint is wired
 (Get-Content .\out-smoke\baseline-*.meta.json -Raw | ConvertFrom-Json).ToolVersion
 ```
 
-Expected: the `ModuleVersion` in `src\PurviewDlpExport.psd1`. A `0.0` means the entrypoint loaded the `.psm1` directly instead of the `.psd1` manifest — flag it, do not commit the baseline.
+Expected: the `ModuleVersion` in `src\PurviewDlpExport.psd1`. A `0.0` means the entrypoint loaded the `.psm1` directly instead of the `.psd1` manifest - flag it, do not commit the baseline.
 
 ## 6. Verify determinism (the core guarantee)
 
@@ -116,12 +116,12 @@ if ($a.Length -eq $b.Length -and -not (Compare-Object $a $b)) {
 Expected: **`IDENTICAL`.** If it drifts, a per-run field is leaking through. Capture the differing key, add it to `$script:VolatileFields` in `src\PurviewDlpExport.psm1`, and lock it in with a strip test in `tests\Normalise.Tests.ps1`.
 
 !!! note "Absent-vs-null is not drift"
-    Optional Purview properties that flip between _absent_ and _null_ across runs — `ContextPropertiesContainWords`, `GroupSet`, `appgroup` — are tenant-side noise,
+    Optional Purview properties that flip between _absent_ and _null_ across runs - `ContextPropertiesContainWords`, `GroupSet`, `appgroup` - are tenant-side noise,
     not a tool bug. See [Property-presence drift between runs](troubleshooting.md#property-presence-drift-between-runs).
 
 ## 7. Verify human readability
 
-Open all three rendered outputs — the DLP team should understand each **without** reading the JSON:
+Open all three rendered outputs - the DLP team should understand each **without** reading the JSON:
 
 ```powershell
 Invoke-Item .\out-smoke\baseline-*-overview.md   # estate scan
@@ -135,7 +135,7 @@ Invoke-Item .\out-smoke\baseline-*-matrix.csv    # opens in Excel
 Remove-Item .\out-smoke -Recurse -Force
 ```
 
-Output files are **never committed** — `.gitignore` excludes `out*/`, and they belong with the engagement workspace. If any step above failed, do not commit a stale baseline.
+Output files are **never committed** - `.gitignore` excludes `out*/`, and they belong with the engagement workspace. If any step above failed, do not commit a stale baseline.
 
 ## Pass criteria at a glance
 
