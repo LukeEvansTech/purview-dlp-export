@@ -141,7 +141,7 @@ function Expand-AdvancedRuleReference {
     }
 
     foreach ($sub in $parsed.Condition.SubConditions) {
-        if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
+        if ((Get-GuardedProperty -Object $sub -Name 'ConditionName') -ne 'ContentContainsSensitiveInformation') { continue }
         if ($null -eq $sub.Value) { continue }
 
         foreach ($item in $sub.Value) {

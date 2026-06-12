@@ -320,6 +320,33 @@ Describe 'ConvertTo-NormalisedBaseline tolerates malformed AdvancedRule shapes' 
     }
 }
 
+Describe 'ConvertTo-NormalisedBaseline tolerates SubConditions without ConditionName' {
+    # Real tenants emit nested grouping SubConditions ({"Operator":"And","SubConditions":[...]})
+    # alongside leaf conditions. These have no ConditionName property, so direct access throws
+    # under Set-StrictMode -Version Latest on PS 5.1. Expand-AdvancedRuleReference must skip them.
+    BeforeAll {
+        $advJson = '{"Condition":{"Operator":"And","SubConditions":[' +
+            '{"Operator":"Or","SubConditions":[{"ConditionName":"ContentContainsSensitiveInformation","Value":[{"id":"sit-1","name":"My SIT"}]}]},' +
+            '{"ConditionName":"ContentIsShared","Value":"InOrganization"}' +
+            ']}}'
+        $rule = [PSCustomObject]@{
+            Name             = 'Nested Group Rule'
+            ParentPolicyName = 'P'
+            AdvancedRule     = $advJson
+        }
+        $script:nestedInv = [PSCustomObject]@{
+            Policies         = @([PSCustomObject]@{ Name = 'P' })
+            Rules            = @($rule)
+            ReferencedSits   = @([PSCustomObject]@{ Id = 'sit-1'; Name = 'My SIT' })
+            ReferencedLabels = @()
+        }
+    }
+
+    It 'does not throw when a SubCondition has no ConditionName property' {
+        { ConvertTo-NormalisedBaseline -Inventory $script:nestedInv } | Should -Not -Throw
+    }
+}
+
 Describe 'ConvertTo-NormalisedBaseline reference ordering is deterministic' {
     It 'orders references with identical (null) Names by Id, regardless of input order' {
         # Orphan references resolve with Name = $null. Sorting by Name alone is stable, so two

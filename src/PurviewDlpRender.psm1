@@ -81,7 +81,7 @@ function Get-RuleDetectorDetail {
     if ($null -eq $parsed.Condition -or $null -eq $parsed.Condition.SubConditions) { return $detailById }
 
     foreach ($sub in $parsed.Condition.SubConditions) {
-        if ($sub.ConditionName -ne 'ContentContainsSensitiveInformation') { continue }
+        if (($sub.PSObject.Properties.Name -notcontains 'ConditionName') -or ($sub.ConditionName -ne 'ContentContainsSensitiveInformation')) { continue }
         if ($null -eq $sub.Value) { continue }
         foreach ($item in $sub.Value) {
             if ($item.PSObject.Properties.Name -notcontains 'id') { continue }  # skip Groups/label items

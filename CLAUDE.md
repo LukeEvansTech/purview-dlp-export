@@ -93,13 +93,40 @@ Any match is a bug. (A naive `Set-`/`Remove-` grep gives false positives like `S
 - **`Normalise.Tests.ps1`** — the bulk; verifies field stripping, name backfill, orphan annotation, key sorting.
 - **`ExportJson.Tests.ps1`** — asserts no-BOM and **byte-identical output across two runs** with the same input.
 - **`View.Tests.ps1`** — drives `ConvertTo-DlpView` from the fixture and asserts the plain-English interpretation (confidence, instance counts, scope, actions, orphan rendering).
-- **`Overview.Tests.ps1` / `Detail.Tests.ps1` / `Matrix.Tests.ps1`** — each asserts no-BOM, two-run determinism, and a **byte-for-byte** snapshot (`tests/fixtures/expected-overview.md`, `expected-detail.md`, `expected-matrix.csv`). If you intentionally change a rendering, regenerate that snapshot (the recipe is in `docs/docs/contributing.md`).
+- **`Overview.Tests.ps1` / `Detail.Tests.ps1` / `Matrix.Tests.ps1`** — each asserts no-BOM, two-run determinism, and a **byte-for-byte** snapshot (`tests/fixtures/expected-overview.md`, `expected-detail.md`, `expected-matrix.csv`). If you intentionally change a rendering, regenerate the affected snapshot(s):
+
+```powershell
+# From repo root — use a fixed DateStamp so filenames are predictable
+pwsh -NoProfile -Command {
+    Import-Module ./src/PurviewDlpExport.psd1 -Force
+    Import-Module ./src/PurviewDlpRender.psm1 -Force
+    $raw  = Get-Content ./tests/fixtures/raw-purview-sample.json -Raw | ConvertFrom-Json
+    $view = ConvertTo-DlpView -Normalised (ConvertTo-NormalisedBaseline -Inventory $raw).Normalised
+    Export-DlpOverviewMarkdown -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Export-DlpDetailMarkdown   -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Export-DlpMatrixCsv        -View $view -OutDir ./tests/fixtures -Tenant acme -DateStamp 20260601
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-overview.md ./tests/fixtures/expected-overview.md
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-detail.md   ./tests/fixtures/expected-detail.md
+    Move-Item -Force ./tests/fixtures/baseline-20260601-acme-matrix.csv  ./tests/fixtures/expected-matrix.csv
+}
+```
+
+Review the diff carefully after regenerating — any snapshot change is a change to the documented output contract.
 - **`Inventory.Tests.ps1`** — covers `Get-DlpInventory` against globally-stubbed, module-scope-mocked Purview cmdlets: bulk single-call catalogue fetch, name resolution, true-orphan handling, and fetch-failure propagation.
 - **`Tenant.Tests.ps1`** — covers `Get-TenantNameFromUpn`: the onmicrosoft.com label is preferred (case-insensitive suffix match, label case preserved), with a fallback to the first domain label for vanity domains.
 - **`Ps51Compat.Tests.ps1`** — guards 5.1 parseability: no `.psm1` uses a PS 6+ construct (greps for `-AsHashtable`), and every parsed PowerShell file (`src/`, `scripts/`, `tests/*.ps1`) contains only ASCII bytes.
 - **`Entrypoint.Tests.ps1`** — source-grep that the entrypoint wires the three emitters and not the retired single-Markdown export (the entrypoint itself needs a live tenant, so it can't be run in tests).
 
-CI runs Pester on ubuntu/macos/windows (`test.yml`) plus a parse-check of the `.psm1` and entrypoint script. Cross-OS matrix exists specifically to catch line-ending and encoding regressions.
+CI runs Pester on ubuntu/macos/windows (`test.yml`) plus a parse-check of the `.psm1` and entrypoint script. Cross-OS matrix exists specifically to catch line-ending and encoding regressions. A fourth workflow, `docs-standard-check.yml`, runs a Zensical drift check on PRs touching `docs/**`, `.github/workflows/**`, `renovate.json`, or `.markdownlint.yml`.
+
+## Adding new functions
+
+- **Singular noun** — `Export-DlpBaselineJson` not `Export-DlpBaselineJsons`.
+- **Approved verb** — check with `Get-Verb | Select-Object -ExpandProperty Group`; unapproved verbs trigger PSScriptAnalyzer.
+- Every function requires `[OutputType(...)]` and `[CmdletBinding()]` — the linter settings enforce both.
+- Export new functions in the `Export-ModuleMember` call at the bottom of the relevant `.psm1`.
+- Entrypoint conventions: `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'` must stay in place.
+- Add a `Describe` block in the appropriate `.Tests.ps1`; cover at minimum the happy path and one edge case.
 
 ## After changing the impure boundary
 

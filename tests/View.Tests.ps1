@@ -240,6 +240,33 @@ Describe 'regression: advanced-rule nested Groups (label) shape does not crash' 
     }
 }
 
+Describe 'regression: SubCondition without ConditionName does not crash' {
+    # Real tenants emit nested grouping nodes ({"Operator":"And","SubConditions":[...]}) inside
+    # Condition.SubConditions alongside leaf conditions. These have no ConditionName property.
+    # Get-RuleDetectorDetail accessed $sub.ConditionName directly, which throws under
+    # Set-StrictMode -Version Latest on PS 5.1.
+    BeforeAll {
+        $advJson = '{"Condition":{"Operator":"And","SubConditions":[' +
+            '{"Operator":"Or","SubConditions":[{"ConditionName":"ContentContainsSensitiveInformation","Value":[{"id":"sit-1"}]}]},' +
+            '{"ConditionName":"ContentIsShared","Value":"InOrganization"}' +
+            ']}}'
+        $rule = [PSCustomObject]@{
+            Name             = 'Nested Group Rule'
+            ParentPolicyName = 'P'
+            Mode             = 'Enable'
+            Priority         = 0
+            Disabled         = $false
+            AdvancedRule     = $advJson
+        }
+        $policy = [PSCustomObject]@{ Name = 'P'; Mode = 'Enable'; Enabled = $true; Priority = 0; Workload = 'Exchange' }
+        $script:nestedNorm = [PSCustomObject]@{ Policies = @($policy); Rules = @($rule); ReferencedSits = @(); ReferencedLabels = @() }
+    }
+
+    It 'does not throw when a SubCondition has no ConditionName property' {
+        { ConvertTo-DlpView -Normalised $script:nestedNorm } | Should -Not -Throw
+    }
+}
+
 Describe 'Format-InstanceCount edge cases' {
     It 'returns null for an empty-string Min instead of throwing on the int cast' {
         InModuleScope PurviewDlpRender {
