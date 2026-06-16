@@ -80,6 +80,8 @@ toc = { permalink = true }
 highlight = { anchor_linenums = true, line_spans = "__span", pygments_lang_class = true }
 inlinehilite = {}
 snippets = {}
-superfences = {}
 details = {}
 tabbed = { alternate_style = true }
+
+[markdown_extensions.pymdownx.superfences]
+custom_fences = [{ name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }]
