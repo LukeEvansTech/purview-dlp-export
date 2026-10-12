@@ -47,41 +47,23 @@ repo_name = "LukeEvansTech/purview-dlp-export"
 edit_uri = "edit/main/docs/docs"
 
 # Navigation Structure
-[[nav]]
+[[project.nav]]
 Home = "index.md"
 
-[[nav]]
+[[project.nav]]
 "Quick start" = "quickstart.md"
 
-[[nav]]
+[[project.nav]]
 "Smoke test (PS 5.1)" = "runbook-ps51.md"
 
-[[nav]]
+[[project.nav]]
 "Output schema" = "output-schema.md"
 
-[[nav]]
+[[project.nav]]
 Troubleshooting = "troubleshooting.md"
 
-[[nav]]
+[[project.nav]]
 Contributing = "contributing.md"
 
-[[nav]]
+[[project.nav]]
 Changelog = "CHANGELOG.md"
-
-# Markdown Extensions
-[markdown_extensions]
-admonition = {}
-attr_list = {}
-md_in_html = {}
-tables = {}
-toc = { permalink = true }
-
-[markdown_extensions.pymdownx]
-highlight = { anchor_linenums = true, line_spans = "__span", pygments_lang_class = true }
-inlinehilite = {}
-snippets = {}
-details = {}
-tabbed = { alternate_style = true }
-
-[markdown_extensions.pymdownx.superfences]
-custom_fences = [{ name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }]
