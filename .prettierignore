@@ -1,6 +1,6 @@
 tests/fixtures/
 docs/superpowers/
-CLAUDE.md
+AGENTS.md
 examples/
 # Zensical admonitions (!!! note) need 4-space-indented bodies, which Prettier
 # de-indents into plain paragraphs.
